@@ -1,0 +1,6 @@
+pyrofork
+tgcrypto
+pymongo
+requests
+pytubefix
+https://github.com/yt-dlp/yt-dlp/archive/master.zip#egg=yt-dlp[default,curl-cffi]

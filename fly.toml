@@ -1,0 +1,12 @@
+app = "velveta-bot"
+primary_region = "yt-downloader-bot" # ఇది ఇండియా (చెన్నై) సర్వర్, స్పీడ్ బాగుంటుంది
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
