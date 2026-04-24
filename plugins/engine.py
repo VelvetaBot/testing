@@ -46,15 +46,15 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 పక్కాగా రియల్ క్వాలిటీలను మాత్రమే లాగే ఫంక్షన్ 🌟
+# 🌟 పక్కాగా రియల్ క్వాలిటీలను లాగే ఫంక్షన్ (ఎర్రర్ రాకుండా) 🌟
 def get_available_formats(url, proxy=None):
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
-        'extractor_args': {'youtube': ['player_client=android,ios']},
         'nocheckcertificate': True,
-        'skip_download': True # ఇది ముఖ్యం! ఫైల్ డౌన్‌లోడ్ చేయకుండా క్వాలిటీలను మాత్రమే చదువుతుంది
+        'skip_download': True,
+        'format': 'bestvideo+bestaudio/best' # ఇక్కడ ఫార్మాట్ ఇవ్వకపోతే డిఫాల్ట్ గా క్రాష్ అవుతుంది
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -81,7 +81,6 @@ def download_media_only(url, quality, yt_id, proxy=None):
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
-        'extractor_args': {'youtube': ['player_client=android,ios']},
         'nocheckcertificate': True,
         'legacyserverconnect': True,
         'writethumbnail': False
@@ -96,7 +95,8 @@ def download_media_only(url, quality, yt_id, proxy=None):
         opts['format'] = 'bestaudio/best'
         opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
     else:
-        opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best/b'
+        # సింగిల్ ఫైల్ ('b') కి బదులుగా స్ట్రాంగ్ స్ప్లిట్ ఫార్మాట్ ఫాల్‌బ్యాక్
+        opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/bestvideo+bestaudio/best'
         opts['merge_output_format'] = 'mp4'
     
     opts['outtmpl'] = f'downloads/{yt_id}_%(title)s.%(ext)s'
@@ -110,9 +110,9 @@ def download_media_only(url, quality, yt_id, proxy=None):
             return fname
     except Exception as e:
         print(f"Main download failed, trying ultimate fallback: {e}")
-        # కచ్చితంగా డౌన్‌లోడ్ అవ్వడానికి లాస్ట్ రిసార్ట్ (Ultimate Fallback)
-        opts['format'] = 'b' # ఎర్రర్స్ లేకుండా సింగిల్ బెస్ట్ ఫైల్ ని లాగుతుంది
-        opts.pop('merge_output_format', None)
+        # లాస్ట్ రిసార్ట్ (Ultimate Fallback) కింద కూడా మెర్జింగ్ అడుగుతున్నాం
+        opts['format'] = 'bestvideo+bestaudio/best'
+        opts['merge_output_format'] = 'mp4'
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             fname = ydl.prepare_filename(info)
@@ -210,12 +210,10 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header):
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    # డైనమిక్ గా క్వాలిటీలు చెక్ చేస్తుంది
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
     buttons = []
     
-    # ఆ వీడియోకి ఏ క్వాలిటీలు ఉంటే అవే చూపిస్తుంది
     if any(h >= 1080 for h in available_h) or not available_h:
         buttons.append([InlineKeyboardButton("🖥 1080p", callback_data=f"dl|1080p|{yt_id}")])
         
