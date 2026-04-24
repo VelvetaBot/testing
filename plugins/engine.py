@@ -14,11 +14,12 @@ from datetime import datetime
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
+# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote>💎 Velveta Premium User</blockquote>\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote>📺 Velveta Semi Premium User</blockquote>\n"
+    if plan == "PREMIUM": return "<blockquote><b>💎 VELVETA PREMIUM USER 💎\n━━━━━━━━━━━━━━━━━━━━━</b></blockquote>\n\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 VELVETA SEMI PREMIUM 📺\n━━━━━━━━━━━━━━━━━━━━━</b></blockquote>\n\n"
     else: return ""
 
 def extract_yt_id(text):
@@ -46,7 +47,6 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 పక్కాగా రియల్ క్వాలిటీలను లాగే ఫంక్షన్ (ఎర్రర్ రాకుండా) 🌟
 def get_available_formats(url, proxy=None):
     opts = {
         'quiet': True,
@@ -54,7 +54,7 @@ def get_available_formats(url, proxy=None):
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'format': 'bestvideo+bestaudio/best' # ఇక్కడ ఫార్మాట్ ఇవ్వకపోతే డిఫాల్ట్ గా క్రాష్ అవుతుంది
+        'format': 'bestvideo+bestaudio/best'
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -68,11 +68,11 @@ def get_available_formats(url, proxy=None):
                 h = f.get('height')
                 if h and isinstance(h, int):
                     available_heights.add(h)
-    except Exception as e:
-        print(f"Format fetch error: {e}")
+    except Exception:
+        pass
     return available_heights
 
-# 🌟 స్ట్రాంగ్ ఫాల్‌బ్యాక్ తో డౌన్‌లోడ్ ఫంక్షన్ 🌟
+# 🌟 Shorts కి సపోర్ట్ చేసేలా Width, Height మరియు Duration లాగే ఫంక్షన్ 🌟
 def download_media_only(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
@@ -95,7 +95,6 @@ def download_media_only(url, quality, yt_id, proxy=None):
         opts['format'] = 'bestaudio/best'
         opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
     else:
-        # సింగిల్ ఫైల్ ('b') కి బదులుగా స్ట్రాంగ్ స్ప్లిట్ ఫార్మాట్ ఫాల్‌బ్యాక్
         opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/bestvideo+bestaudio/best'
         opts['merge_output_format'] = 'mp4'
     
@@ -105,18 +104,22 @@ def download_media_only(url, quality, yt_id, proxy=None):
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             fname = ydl.prepare_filename(info)
+            width = info.get('width') or 0
+            height = info.get('height') or 0
+            duration = info.get('duration') or 0
             if quality == "audio" and not fname.endswith('.mp3'):
                 fname = fname.rsplit('.', 1)[0] + '.mp3'
-            return fname
-    except Exception as e:
-        print(f"Main download failed, trying ultimate fallback: {e}")
-        # లాస్ట్ రిసార్ట్ (Ultimate Fallback) కింద కూడా మెర్జింగ్ అడుగుతున్నాం
+            return fname, width, height, duration
+    except Exception:
         opts['format'] = 'bestvideo+bestaudio/best'
         opts['merge_output_format'] = 'mp4'
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
             fname = ydl.prepare_filename(info)
-            return fname
+            width = info.get('width') or 0
+            height = info.get('height') or 0
+            duration = info.get('duration') or 0
+            return fname, width, height, duration
 
 async def safe_edit_text(msg, text, reply_markup=None):
     try:
@@ -152,7 +155,13 @@ async def start_download_process(client, event, quality, url, title=None, existi
     user = users_db.find_one({"user_id": user_id}) or {}
     proxy = user.get("proxy")
     
-    sent_msg = existing_msg if existing_msg else (event.message if hasattr(event, "data") else await event.reply_text(f"{header}📥 <b>Processing...</b>", parse_mode=enums.ParseMode.HTML))
+    # రిప్లై ఇవ్వడానికి ఒరిజినల్ మెసేజ్ ఐడీ ని లాగడం
+    if hasattr(event, "data"):
+        reply_to_id = event.message.reply_to_message_id if event.message.reply_to_message else event.message.id
+    else:
+        reply_to_id = event.id
+
+    sent_msg = existing_msg if existing_msg else (event.message if hasattr(event, "data") else await event.reply_text(f"{header}📥 <b>Processing...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=reply_to_id))
 
     try:
         api_title, yt_thumb_url = get_yt_metadata(yt_id)
@@ -171,14 +180,43 @@ async def start_download_process(client, event, quality, url, title=None, existi
                 final_thumb = yt_thumb_path
             except Exception: pass
 
-        file_path = await asyncio.to_thread(download_media_only, url, quality, yt_id, proxy)
+        # మీడియా డౌన్‌లోడ్ తో పాటు ఎత్తు వెడల్పులు తీసుకోవడం
+        file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_only, url, quality, yt_id, proxy)
 
         await safe_edit_text(sent_msg, f"{header}📤 <b>Uploading to Telegram...</b>")
 
+        # 🌟 షేర్ బటన్ 🌟
+        share_url = f"https://t.me/share/url?url={url}"
+        share_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📤 Share Video With Friends 📤", url=share_url)]])
+
+        # టెలిగ్రామ్‌కి పంపేటప్పుడు పక్కాగా రిప్లై మరియు షార్ట్స్ డైమెన్షన్స్
         if quality == "audio":
-            await client.send_audio(chat_id=user_id, audio=file_path, caption=f"{header}🎬 <b>{video_title}</b>", thumb=final_thumb, progress=progress_bar, progress_args=(sent_msg, video_title, header))
+            await client.send_audio(
+                chat_id=user_id, 
+                audio=file_path, 
+                caption=f"{header}🎬 <b>{video_title}</b>", 
+                thumb=final_thumb, 
+                duration=v_duration,
+                reply_to_message_id=reply_to_id,
+                reply_markup=share_markup,
+                progress=progress_bar, 
+                progress_args=(sent_msg, video_title, header)
+            )
         else:
-            await client.send_video(chat_id=user_id, video=file_path, caption=f"{header}🎬 <b>{video_title}</b>", thumb=final_thumb, progress=progress_bar, progress_args=(sent_msg, video_title, header), supports_streaming=True)
+            await client.send_video(
+                chat_id=user_id, 
+                video=file_path, 
+                caption=f"{header}🎬 <b>{video_title}</b>", 
+                thumb=final_thumb, 
+                width=v_width,       # ఈ రెండు ఉండటం వల్లే షార్ట్స్ పర్ఫెక్ట్ గా వస్తాయి!
+                height=v_height,     
+                duration=v_duration,
+                reply_to_message_id=reply_to_id,
+                reply_markup=share_markup,
+                progress=progress_bar, 
+                progress_args=(sent_msg, video_title, header), 
+                supports_streaming=True
+            )
         
         await sent_msg.delete()
         
@@ -205,7 +243,7 @@ async def reveal_cmd(client, message):
         if yt_id: await show_quality_buttons(client, message, saved_url, yt_id, user_id, header)
 
 async def show_quality_buttons(client, message, url, yt_id, user_id, header):
-    proc_msg = await message.reply_text(f"{header}🔍 <b>Checking available qualities...</b>", parse_mode=enums.ParseMode.HTML)
+    proc_msg = await message.reply_text(f"{header}🔍 <b>Checking available qualities...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
     
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
@@ -213,7 +251,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header):
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
     buttons = []
-    
     if any(h >= 1080 for h in available_h) or not available_h:
         buttons.append([InlineKeyboardButton("🖥 1080p", callback_data=f"dl|1080p|{yt_id}")])
         
