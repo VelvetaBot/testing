@@ -46,7 +46,7 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 డైనమిక్ క్వాలిటీ చెక్కర్ (అందుబాటులో ఉన్నవి మాత్రమే చూపిస్తుంది) 🌟
+# 🌟 పక్కాగా రియల్ క్వాలిటీలను మాత్రమే లాగే ఫంక్షన్ 🌟
 def get_available_formats(url, proxy=None):
     opts = {
         'quiet': True,
@@ -54,8 +54,7 @@ def get_available_formats(url, proxy=None):
         'cookiefile': 'cookies.txt',
         'extractor_args': {'youtube': ['player_client=android,ios']},
         'nocheckcertificate': True,
-        'legacyserverconnect': True,
-        'extract_flat': 'in_playlist'
+        'skip_download': True # ఇది ముఖ్యం! ఫైల్ డౌన్‌లోడ్ చేయకుండా క్వాలిటీలను మాత్రమే చదువుతుంది
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -64,16 +63,16 @@ def get_available_formats(url, proxy=None):
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            if 'formats' in info:
-                for f in info['formats']:
-                    h = f.get('height')
-                    if h and isinstance(h, int):
-                        available_heights.add(h)
-    except Exception:
-        pass
-    
+            formats = info.get('formats', [])
+            for f in formats:
+                h = f.get('height')
+                if h and isinstance(h, int):
+                    available_heights.add(h)
+    except Exception as e:
+        print(f"Format fetch error: {e}")
     return available_heights
 
+# 🌟 స్ట్రాంగ్ ఫాల్‌బ్యాక్ తో డౌన్‌లోడ్ ఫంక్షన్ 🌟
 def download_media_only(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
@@ -97,7 +96,6 @@ def download_media_only(url, quality, yt_id, proxy=None):
         opts['format'] = 'bestaudio/best'
         opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
     else:
-        # కచ్చితమైన ఫార్మాట్ ఫాల్‌బ్యాక్
         opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best/b'
         opts['merge_output_format'] = 'mp4'
     
@@ -110,14 +108,15 @@ def download_media_only(url, quality, yt_id, proxy=None):
             if quality == "audio" and not fname.endswith('.mp3'):
                 fname = fname.rsplit('.', 1)[0] + '.mp3'
             return fname
-    except yt_dlp.utils.DownloadError as e:
-        if "Requested format is not available" in str(e):
-            opts['format'] = 'best'
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                fname = ydl.prepare_filename(info)
-                return fname
-        raise e
+    except Exception as e:
+        print(f"Main download failed, trying ultimate fallback: {e}")
+        # కచ్చితంగా డౌన్‌లోడ్ అవ్వడానికి లాస్ట్ రిసార్ట్ (Ultimate Fallback)
+        opts['format'] = 'b' # ఎర్రర్స్ లేకుండా సింగిల్ బెస్ట్ ఫైల్ ని లాగుతుంది
+        opts.pop('merge_output_format', None)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            fname = ydl.prepare_filename(info)
+            return fname
 
 async def safe_edit_text(msg, text, reply_markup=None):
     try:
@@ -211,21 +210,19 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header):
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    # డైనమిక్ గా క్వాలిటీలు తెచ్చుకోవడం
+    # డైనమిక్ గా క్వాలిటీలు చెక్ చేస్తుంది
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
     buttons = []
     
-    # 1080p బటన్ (ఉంటేనే చూపిస్తుంది)
+    # ఆ వీడియోకి ఏ క్వాలిటీలు ఉంటే అవే చూపిస్తుంది
     if any(h >= 1080 for h in available_h) or not available_h:
         buttons.append([InlineKeyboardButton("🖥 1080p", callback_data=f"dl|1080p|{yt_id}")])
         
-    # 720p బటన్
     row = []
     if any(h >= 720 for h in available_h) or not available_h:
         row.append(InlineKeyboardButton("💻 720p", callback_data=f"dl|720p|{yt_id}"))
         
-    # 480p లేదా 360p బటన్
     if any(h >= 480 for h in available_h) or not available_h:
         row.append(InlineKeyboardButton("📺 480p", callback_data=f"dl|480p|{yt_id}"))
     elif any(h >= 360 for h in available_h) or not available_h:
@@ -234,7 +231,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header):
     if row:
         buttons.append(row)
 
-    # Audio బటన్ ఎప్పుడూ ఉంటుంది
     buttons.append([InlineKeyboardButton("🎵 Audio", callback_data=f"dl|audio|{yt_id}")])
 
     text = f"{header}🎬 📹 <b>{title}</b>\n\n👇 <b>Select Quality:</b>"
