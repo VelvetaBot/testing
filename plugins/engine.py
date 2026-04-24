@@ -72,7 +72,7 @@ def get_available_formats(url, proxy=None):
         pass
     return available_heights
 
-# 🌟 Shorts కి సపోర్ట్ చేసేలా Width, Height మరియు Duration లాగే ఫంక్షన్ 🌟
+# 🌟 ఆటో రిపేర్ (ఫాల్‌బ్యాక్) ఫంక్షన్ తో మీడియా డౌన్‌లోడ్ 🌟
 def download_media_only(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
@@ -155,7 +155,6 @@ async def start_download_process(client, event, quality, url, title=None, existi
     user = users_db.find_one({"user_id": user_id}) or {}
     proxy = user.get("proxy")
     
-    # రిప్లై ఇవ్వడానికి ఒరిజినల్ మెసేజ్ ఐడీ ని లాగడం
     if hasattr(event, "data"):
         reply_to_id = event.message.reply_to_message_id if event.message.reply_to_message else event.message.id
     else:
@@ -180,16 +179,13 @@ async def start_download_process(client, event, quality, url, title=None, existi
                 final_thumb = yt_thumb_path
             except Exception: pass
 
-        # మీడియా డౌన్‌లోడ్ తో పాటు ఎత్తు వెడల్పులు తీసుకోవడం
         file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_only, url, quality, yt_id, proxy)
 
         await safe_edit_text(sent_msg, f"{header}📤 <b>Uploading to Telegram...</b>")
 
-        # 🌟 షేర్ బటన్ 🌟
         share_url = f"https://t.me/share/url?url={url}"
         share_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📤 Share Video With Friends 📤", url=share_url)]])
 
-        # టెలిగ్రామ్‌కి పంపేటప్పుడు పక్కాగా రిప్లై మరియు షార్ట్స్ డైమెన్షన్స్
         if quality == "audio":
             await client.send_audio(
                 chat_id=user_id, 
@@ -208,7 +204,7 @@ async def start_download_process(client, event, quality, url, title=None, existi
                 video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>", 
                 thumb=final_thumb, 
-                width=v_width,       # ఈ రెండు ఉండటం వల్లే షార్ట్స్ పర్ఫెక్ట్ గా వస్తాయి!
+                width=v_width,
                 height=v_height,     
                 duration=v_duration,
                 reply_to_message_id=reply_to_id,
@@ -250,27 +246,27 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header):
     
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
-    buttons = []
-    if any(h >= 1080 for h in available_h) or not available_h:
-        buttons.append([InlineKeyboardButton("🖥 1080p", callback_data=f"dl|1080p|{yt_id}")])
-        
-    row = []
-    if any(h >= 720 for h in available_h) or not available_h:
-        row.append(InlineKeyboardButton("💻 720p", callback_data=f"dl|720p|{yt_id}"))
-        
-    if any(h >= 480 for h in available_h) or not available_h:
-        row.append(InlineKeyboardButton("📺 480p", callback_data=f"dl|480p|{yt_id}"))
-    elif any(h >= 360 for h in available_h) or not available_h:
-        row.append(InlineKeyboardButton("📱 360p", callback_data=f"dl|360p|{yt_id}"))
-        
-    if row:
-        buttons.append(row)
-
-    buttons.append([InlineKeyboardButton("🎵 Audio", callback_data=f"dl|audio|{yt_id}")])
+    # 🌟 అన్ని బటన్స్ క్రియేట్ చేయడం మరియు లేని వాటికి 🔒 పెట్టడం 🌟
+    btn_1080 = InlineKeyboardButton("🖥 1080p", callback_data=f"dl|1080p|{yt_id}") if (any(h >= 1080 for h in available_h) or not available_h) else InlineKeyboardButton("🔒 1080p", callback_data="locked_quality")
+    btn_720 = InlineKeyboardButton("💻 720p", callback_data=f"dl|720p|{yt_id}") if (any(h >= 720 for h in available_h) or not available_h) else InlineKeyboardButton("🔒 720p", callback_data="locked_quality")
+    btn_480 = InlineKeyboardButton("📺 480p", callback_data=f"dl|480p|{yt_id}") if (any(h >= 480 for h in available_h) or not available_h) else InlineKeyboardButton("🔒 480p", callback_data="locked_quality")
+    btn_360 = InlineKeyboardButton("📱 360p", callback_data=f"dl|360p|{yt_id}") if (any(h >= 360 for h in available_h) or not available_h) else InlineKeyboardButton("🔒 360p", callback_data="locked_quality")
+    
+    buttons = [
+        [btn_1080, btn_720],
+        [btn_480, btn_360],
+        [InlineKeyboardButton("🎵 Audio", callback_data=f"dl|audio|{yt_id}")]
+    ]
 
     text = f"{header}🎬 📹 <b>{title}</b>\n\n👇 <b>Select Quality:</b>"
     keyboard = InlineKeyboardMarkup(buttons)
     await safe_edit_text(proc_msg, text, reply_markup=keyboard)
+
+# 🌟 లాక్ చేయబడిన క్వాలిటీ నొక్కినప్పుడు వచ్చే పాప్-అప్ (Alert) మెసేజ్ 🌟
+@Client.on_callback_query(filters.regex(r"^locked_quality$"))
+async def locked_quality_alert(client, callback_query):
+    alert_text = "🚫 OOPS! Sorry!\n\nThe requested quality is NOT available for this specific YouTube link. 😔\n\n👉 Please select an unlocked quality from the menu! 🎥"
+    await callback_query.answer(alert_text, show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^dl\|(.*)\|(.*)$"))
 async def quality_selection(client, callback_query):
