@@ -2,7 +2,7 @@ import os
 
 class Config:
     # Telegram Bot & Channel వివరాలు
-    BOT_TOKEN = os.environ.get("BOT_TOKEN", "8622929989:AAHSdiJSL8veGqxu04DnAtQcvmPIKhoDlLg")
+    BOT_TOKEN = os.environ.get("BOT_TOKEN", "8622929989:AAH3E1Fjxi5VrJLVM02OOsSwHiSJUpzynnE")
     API_ID = int(os.environ.get("API_ID", 11253846))
     API_HASH = os.environ.get("API_HASH", "8db4eb50f557faa9a5756e64fb74a51a")
     
