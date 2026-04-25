@@ -9,7 +9,7 @@ from database import users_db
 import config
 
 # పాత ఇంజిన్ ఫైల్ నుండి అవసరమైన ఫంక్షన్స్ తీసుకుంటున్నాం (కోడ్ డూప్లికేట్ అవ్వకుండా)
-from plugins.engine import get_header, download_media_only, progress_bar, safe_edit_text, get_yt_metadata
+from plugins.engine import get_header, download_media_with_fallback, progress_bar, safe_edit_text, get_yt_metadata
 
 def extract_clean_id(text):
     # 🌟 ఆటో-రిపేర్ లాజిక్: స్పేస్‌లు మరియు చెత్త అక్షరాలను క్లీన్ చేసి ID ని లాగుతుంది 🌟
@@ -187,7 +187,7 @@ async def process_playlist_download(client, message, videos, quality, status_msg
                     final_thumb = yt_thumb_path
                 except Exception: pass
 
-            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_only, url, quality, yt_id, proxy)
+            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
 
             if quality == "audio":
                 await client.send_audio(chat_id=user_id, audio=file_path, caption=f"{header}🎬 <b>{video_title}</b>", thumb=final_thumb, duration=v_duration)
