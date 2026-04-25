@@ -15,6 +15,7 @@ try:
     
     # యూజర్ల డేటా సేవ్ చేసే కలెక్షన్
     users_db = db["users"]
+logs_collection = database["logs_collection"]
     
     logger.info("✅ Database connected successfully!")
 except Exception as e:
