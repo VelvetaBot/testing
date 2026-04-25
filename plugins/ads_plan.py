@@ -7,9 +7,8 @@ from datetime import datetime, timedelta
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    # మొబైల్ స్క్రీన్ కి సరిపోయేలా స్పేస్‌లు
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 Velveta Semi Premium </b>ㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b></blockquote>"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b></blockquote>"
     else: return ""
 
 # ==========================================
