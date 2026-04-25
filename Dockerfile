@@ -1,18 +1,18 @@
 FROM python:3.11-slim-bookworm
 
-# సిస్టమ్ డిపెండెన్సీలను ఇన్‌స్టాల్ చేయడం
+WORKDIR /app
+
+# ఇక్కడ ffmpeg, curl తో పాటు git ని యాడ్ చేశాను
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+COPY requirements.txt .
 
-# ఫైల్స్‌ని కాపీ చేయడం
-COPY . .
-
-# పైథాన్ లైబ్రరీలను ఇన్‌స్టాల్ చేయడం
 RUN pip install --no-cache-dir -r requirements.txt
 
-# బాట్‌ను స్టార్ట్ చేయడం
-CMD ["python3", "main.py"]
+COPY . .
+
+CMD ["python", "main.py"]
