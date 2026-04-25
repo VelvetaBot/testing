@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.exceptions import StopPropagation
+from pyrogram import Client, filters, enums, StopPropagation
 from database import users_db
 import config
 
