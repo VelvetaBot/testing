@@ -12,20 +12,20 @@ from database import users_db
 # ==========================================
 
 # TikTok Downloader
-TIKTOK_BOT_TOKEN = "paste here"
-TIKTOK_DB = "paste here"
+TIKTOK_BOT_TOKEN = "8266140163:AAGFcj-Bn4iWLSftZGJk17JgDWMJ6lv89Jk"
+TIKTOK_DB = "mongodb://tiktodownloader:7ajdakInU87f1wzurGRR6wMcuezQFwFEE9Umr5fbIiEjzz7oAs4AamDA6zsFchkMQJwioZwyR6IYACDbQx7BrA==@tiktodownloader.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@tiktodownloader@"
 
 # X (Twitter) Downloader
-X_BOT_TOKEN = "paste here"
-X_DB = "paste here"
+X_BOT_TOKEN = "8192234975:AAGdQZd6h1OOG8jxwq73aHXaq4k9JwOxBDQ"
+X_DB = "mongodb://xdownloader:8LNIXCxAKRyBgQrN6Cq6gZT9YajY4WZkAXgS6SH1V5q6AsHAZyqRXwD3CBuGTowVzZcz7igNG3lsACDbTdTWSA==@xdownloader.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@xdownloader@"
 
 # Facebook Downloader
-FB_BOT_TOKEN = "paste here"
-FB_DB = "paste here"
+FB_BOT_TOKEN = "8560671514:AAGjMGh4oBDgzeM4qwI7V0FVhu46f5uQ8uc"
+FB_DB = "mongodb://fbdownloader:ufMFVu0MQxt3P5luATal14a1TvluH6KSAytHm93qZe1nWQBpAVVHjI4FBrpzDVkAbwZErJWUEabOACDbpEoRpw==@fbdownloader.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@fbdownloader@"
 
 # Instagram Downloader
-INSTA_BOT_TOKEN = "paste here"
-INSTA_DB = "paste here"
+INSTA_BOT_TOKEN = "8299037065:AAHDl-hkVcX8EavhBRmKBqkN1-0e_8-8ono"
+INSTA_DB = "mongodb://instadownloader:YEZd4tnCHFwPtBTNXGa7m1Kxgm6aegqbneagdqnsH60j8KMwqtEyxf5bBZQXqsyR2h1ZoZ3lKY23ACDb44N8dw==@instadownloader.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@instadownloader@"
 
 # ==========================================
 # 🌟 18+ (NSFW) CONTENT SUPPORT ENABLED 🌟
