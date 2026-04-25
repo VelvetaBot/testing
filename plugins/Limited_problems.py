@@ -16,9 +16,8 @@ except ImportError:
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    # ఆ ఖాళీ స్థలంలో "కనిపించని అక్షరాలు" ఉన్నాయి, వాటిని యాజ్ ఇట్ ఈజ్ గా కాపీ చేసుకోండి
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b>💎 Velveta Semi Premium User</b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b></blockquote>"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b></blockquote>"
     else: return ""
 
 # 🌟 యూనివర్సల్ సపోర్ట్ బటన్ 🌟
