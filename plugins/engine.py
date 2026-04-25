@@ -4,9 +4,9 @@ import time
 import asyncio
 import requests
 import yt_dlp
-import youtube_dl
-from pytubefix import YouTube as PyTubeFixDL
-from pytube import YouTube as PyTubeDL
+import youtube_dl 
+from pytubefix import YouTube as PyTubeFixDL 
+from pytube import YouTube as PyTubeDL 
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, MessageNotModified
@@ -14,10 +14,8 @@ from database import users_db
 import config
 from datetime import datetime
 
-# 🌟 ఇతర ఫైల్స్ నుండి ఫంక్షన్స్ ఇక్కడ లింక్ చేశాను (ఇదే మనం మర్చిపోయింది) 🌟
+# కుకీస్ ఫైల్ కి ఇంజిన్ తో పని లేదు కాబట్టి దీన్ని పైన ఉంచవచ్చు
 from plugins.cookie_manager import get_working_cookie_file
-from plugins.fallback import run_ultimate_fallback
-from plugins.admin import log_bot_problem
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
@@ -26,6 +24,7 @@ SCHEDULER_STARTED = False
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
+    # మొబైల్ స్క్రీన్ కి సరిపోయేలా స్పేస్‌లు
     if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 Velveta Semi Premium </b>ㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     else: return ""
@@ -90,7 +89,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
-    # --- ATTEMPT 1: YT-DLP ---
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -118,7 +116,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     except Exception as e1:
         print(f"YT-DLP Failed: {e1}")
         
-        # --- ATTEMPT 2: PyTubeFix ---
         try:
             yt = PyTubeFixDL(url)
             if quality == "audio":
@@ -133,7 +130,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         except Exception as e2:
             print(f"PyTubeFix Failed: {e2}")
             
-            # --- ATTEMPT 3: PyTube ---
             try:
                 yt = PyTubeDL(url)
                 if quality == "audio":
@@ -148,7 +144,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             except Exception as e3:
                 print(f"PyTube Failed: {e3}")
                 
-                # --- ATTEMPT 4: Youtube-dl ---
                 try:
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
@@ -232,7 +227,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    # క్వాలిటీస్ చెక్ చేయడానికి ముందే ఫ్రెష్ కుకీస్ ని లోడ్ చేస్తున్నాం
     get_working_cookie_file(0) 
     
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
@@ -329,36 +323,32 @@ async def start_download_process(client, event, quality, url):
 
         await safe_edit_text(sent_msg, f"{header}📥 <b>Processing & Downloading...</b>\n🎬 {video_title}")
 
-        # 🌟 కుకీ రొటేషన్ అండ్ ప్యాకేజీ ఫాల్‌బ్యాక్ లూప్ ఇక్కడే ఉంది 🌟
         file_path = None
         download_success = False
         last_error = ""
 
         for attempt in range(5):
-            # ఈ ఫంక్షన్ ద్వారా ఐదు కుకీస్ ని ఒక్కొక్కటిగా చెక్ చేసి పంపుతుంది
             cookie_file = get_working_cookie_file(attempt) 
-            
             try:
                 file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
                 download_success = True
-                break # ఒక్కసారి సక్సెస్ అవ్వగానే లూప్ ఆగిపోతుంది
+                break
             except Exception as e:
                 last_error = str(e)
                 print(f"Cookie/Package Loop Attempt {attempt+1} Failed: {e}")
-                continue # ఫెయిల్ అయితే నెక్స్ట్ కుకీకి మారుతుంది
+                continue
 
         if not download_success:
-            # 🌟 5 కుకీస్ మరియు 4 ప్యాకేజీలు ఫెయిల్ అయితే... 🌟
-            # 1. ప్రాబ్లమ్స్ లాగ్ లోకి ఎర్రర్ పంపడం
-            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
+            # 🌟 Circular Import ని అవాయిడ్ చేయడానికి ఇక్కడ ఫంక్షన్స్ పిలుస్తున్నాం 🌟
+            from plugins.admin import log_bot_problem
+            from plugins.fallback import run_ultimate_fallback
             
-            # 2. అల్టిమేట్ యూజర్‌బాట్ ఫాల్‌బ్యాక్ కి కనెక్ట్ చేయడం!
+            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
             return
 
         start_time = time.time()
-        
         extract_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔊 Extract Audio MP3", callback_data=f"start_dl|audio|{yt_id}")]])
 
         if quality == "audio":
@@ -392,6 +382,8 @@ async def start_download_process(client, event, quality, url):
             os.remove(final_thumb)
 
     except Exception as e:
+        # 🌟 ఇక్కడ కూడా Circular Import లేకుండా జాగ్రత్త పడ్డాం 🌟
+        from plugins.admin import log_bot_problem
         log_bot_problem(str(e), "engine.py - Upload Stage")
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
 
