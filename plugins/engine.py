@@ -24,8 +24,8 @@ SCHEDULER_STARTED = False
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b></blockquote>"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b></blockquote>"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b></blockquote>\n\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b></blockquote>\n\n"
     else: return ""
 
 def extract_yt_id(text):
@@ -60,7 +60,8 @@ def get_available_formats(url, proxy=None):
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'skip_download': True
+        'skip_download': True,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 Android Bypass for checking formats 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -79,7 +80,7 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
+# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER (With Android Bypass) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -88,12 +89,14 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
+    # --- ATTEMPT 1: YT-DLP ---
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s'
+        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 YOUTUBE BOT DETECTION BYPASS 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -115,8 +118,9 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     except Exception as e1:
         print(f"YT-DLP Failed: {e1}")
         
+        # --- ATTEMPT 2: PyTubeFix ---
         try:
-            yt = PyTubeFixDL(url)
+            yt = PyTubeFixDL(url, use_po_token=True) # 🌟 Po-Token Bypass for PyTubeFix 🌟
             if quality == "audio":
                 stream = yt.streams.get_audio_only()
                 fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
@@ -129,6 +133,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         except Exception as e2:
             print(f"PyTubeFix Failed: {e2}")
             
+            # --- ATTEMPT 3: PyTube ---
             try:
                 yt = PyTubeDL(url)
                 if quality == "audio":
@@ -143,10 +148,12 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             except Exception as e3:
                 print(f"PyTube Failed: {e3}")
                 
+                # --- ATTEMPT 4: Youtube-dl ---
                 try:
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
-                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s'
+                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
+                        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 Bypass 🌟
                     }
                     if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
                     
