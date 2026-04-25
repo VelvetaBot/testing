@@ -55,8 +55,9 @@ def check_anti_speed(user_id):
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 VELVETA PREMIUM USER 💎\n━━━━━━━━━━━━━━━━━━━━━</b></blockquote>\n\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 VELVETA SEMI PREMIUM 📺\n━━━━━━━━━━━━━━━━━━━━━</b></blockquote>\n\n"
+    # ఆ ఖాళీ స్థలంలో "కనిపించని అక్షరాలు" ఉన్నాయి, వాటిని యాజ్ ఇట్ ఈజ్ గా కాపీ చేసుకోండి
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b>💎 Velveta Semi Premium User</b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     else: return ""
 
 # ==========================================
