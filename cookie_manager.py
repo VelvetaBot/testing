@@ -7,28 +7,18 @@ logger = logging.getLogger(__name__)
 
 # ==========================================
 # 🍪 మీ 5 కుకీస్ ఇక్కడ పేస్ట్ చేయండి 🍪
-# (ఆ మూడు కొటేషన్స్ """ మధ్యలో మీ కుకీస్ కోడ్ పేస్ట్ చేయండి)
+# (ఆ మూడు కొటేషన్స్ """ మధ్యలో 'paste_here' ని తీసేసి మీ కుకీస్ కోడ్ పేస్ట్ చేయండి)
 # ==========================================
 
-COOKIE_1 = """
-# ఇక్కడ మీ 1వ కుకీస్ ని పేస్ట్ చేయండి
-"""
+COOKIE_1 = """paste_here"""
 
-COOKIE_2 = """
-# ఇక్కడ మీ 2వ కుకీస్ ని పేస్ట్ చేయండి
-"""
+COOKIE_2 = """paste_here"""
 
-COOKIE_3 = """
-# ఇక్కడ మీ 3వ కుకీస్ ని పేస్ట్ చేయండి
-"""
+COOKIE_3 = """paste_here"""
 
-COOKIE_4 = """
-# ఇక్కడ మీ 4వ కుకీస్ ని పేస్ట్ చేయండి
-"""
+COOKIE_4 = """paste_here"""
 
-COOKIE_5 = """
-# ఇక్కడ మీ 5వ కుకీస్ ని పేస్ట్ చేయండి
-"""
+COOKIE_5 = """paste_here"""
 
 # అన్ని కుకీస్‌ని ఒక లిస్ట్‌లో పెడుతున్నాం
 AVAILABLE_COOKIES = [COOKIE_1, COOKIE_2, COOKIE_3, COOKIE_4, COOKIE_5]
@@ -41,8 +31,8 @@ def get_working_cookie_file(attempt_index):
     if attempt_index < len(AVAILABLE_COOKIES):
         cookie_data = AVAILABLE_COOKIES[attempt_index].strip()
         
-        # కుకీ ఖాళీగా ఉంటే (పేస్ట్ చేయకపోతే) దాన్ని స్కిప్ చేయడానికి
-        if not cookie_data or "ఇక్కడ మీ" in cookie_data:
+        # కుకీ ఖాళీగా ఉంటే (లేదా paste_here అలానే ఉంటే) దాన్ని స్కిప్ చేయడానికి
+        if not cookie_data or cookie_data == "paste_here":
             return None
             
         # ప్రతిసారీ ఒకే ఒక్క cookies.txt ఫైల్ క్రియేట్/ఓవర్‌రైట్ చేస్తుంది (గిట్‌హబ్ క్లీన్ గా ఉంటుంది)
