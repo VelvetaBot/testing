@@ -1,195 +1,159 @@
 import os
 import asyncio
-from datetime import datetime
 from pyrogram import Client, filters, enums
-from pyrogram.types import ChatMemberUpdated
-from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
-from database import users_db
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton # 🌟 ఈ లైన్ మిస్ అవ్వడం వల్లే ఎర్రర్ వచ్చింది 🌟
+from pyrogram.exceptions import FloodWait
+from database import users_db, logs_collection
 import config
+from datetime import datetime
 
-# డేటాబేస్ నుండి అడ్మిన్ స్టాటిస్టిక్స్ కోసం సపరేట్ కలెక్షన్స్
-stats_db = users_db.database["statistics"]
-errors_db = users_db.database["error_logs"]
-
-# బాట్ స్టార్ట్ అయినప్పుడు స్టాట్స్ డేటాబేస్ లేకపోతే క్రియేట్ చేయడానికి
-if not stats_db.find_one({"_id": "bot_stats"}):
-    stats_db.insert_one({
-        "_id": "bot_stats",
-        "total_links": 0,
-        "success_downloads": 0,
-        "failed_downloads": 0,
-        "added_in_groups": 0,
-        "group_msgs_deleted": 0,
-        "ads_plan_users": 0,
-        "money_plan_users": 0,
-        "blocked_users_by_admin": 0
-    })
-
+# అడ్మిన్ ఐడీ చెక్ చేయడానికి ఫంక్షన్
 def is_admin(user_id, username):
-    """యూజర్ అడ్మిన్ అవునా కాదా అని చెక్ చేసే ఫంక్షన్"""
     admin_id = str(getattr(config.Config, "ADMIN_ID", ""))
     return str(user_id) == admin_id or str(username).lower() == admin_id.lower()
 
-def log_bot_problem(error_message, module_name):
-    """బాట్ లో ఏ సమస్య వచ్చినా డేటాబేస్ లో రికార్డ్ చేసే ఫంక్షన్"""
-    errors_db.insert_one({
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "module": module_name,
-        "error": str(error_message)
-    })
-
 # ==========================================
-# 🌟 DEACTIVATED USERS TRACKING (Live Tracking) 🌟
+# 🌟 1. USER TRACKING (స్టేటస్ కౌంట్ కోసం) 🌟
 # ==========================================
-@Client.on_chat_member_updated(filters.private)
-async def track_user_status(client, update: ChatMemberUpdated):
-    user_id = update.new_chat_member.user.id
-    
-    # యూజర్ బాట్‌ను బ్లాక్ చేస్తే (Deactivated)
-    if update.new_chat_member.status == enums.ChatMemberStatus.BANNED:
-        users_db.update_one({"user_id": user_id}, {"$set": {"deactivated": True}})
+@Client.on_chat_member_updated()
+async def track_user_status(client, event):
+    if event.chat.type != enums.ChatType.PRIVATE:
+        return
         
-    # యూజర్ తిరిగి మళ్లీ బాట్‌ను స్టార్ట్ చేస్తే (Re-activated)
-    elif update.new_chat_member.status == enums.ChatMemberStatus.MEMBER:
-        users_db.update_one({"user_id": user_id}, {"$set": {"deactivated": False}})
+    user_id = event.new_chat_member.user.id
+    
+    # యూజర్ బాట్‌ను స్టార్ట్ చేసినప్పుడు (లేదా అన్‌బ్లాక్ చేసినప్పుడు)
+    if event.new_chat_member.status == enums.ChatMemberStatus.MEMBER:
+        user = users_db.find_one({"user_id": user_id})
+        if not user:
+            # కొత్త యూజర్ అయితే ఫ్రీ ప్లాన్ తో డేటాబేస్ లో యాడ్ చేయడం
+            users_db.insert_one({
+                "user_id": user_id,
+                "username": event.new_chat_member.user.username,
+                "first_name": event.new_chat_member.user.first_name,
+                "plan": "FREE",
+                "bot_count": 0,
+                "group_count": 0,
+                "status": "active",
+                "joined_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+        else:
+            # పాత యూజర్ మళ్ళీ వస్తే స్టేటస్ యాక్టివ్ గా మార్చడం
+            users_db.update_one({"user_id": user_id}, {"$set": {"status": "active"}})
+            
+    # యూజర్ బాట్‌ను బ్లాక్ చేసినప్పుడు (లేదా డిలీట్ చేసినప్పుడు)
+    elif event.new_chat_member.status == enums.ChatMemberStatus.BANNED:
+        users_db.update_one({"user_id": user_id}, {"$set": {"status": "blocked"}})
 
 # ==========================================
-# 📊 USERS COMMAND (Advanced Stats) 📊
+# 🌟 2. USERS STATS COMMAND (/users) 🌟
 # ==========================================
 @Client.on_message(filters.command("users") & filters.private)
 async def users_stats_cmd(client, message):
     if not is_admin(message.from_user.id, message.from_user.username):
-        return # అడ్మిన్ కాకపోతే సైలెంట్ గా వదిలేస్తుంది
+        return
 
-    # యాక్టివ్ మరియు డీ-యాక్టివేటెడ్ యూజర్ల కౌంట్
-    active_users = users_db.count_documents({"deactivated": {"$ne": True}})
-    deactivated_users = users_db.count_documents({"deactivated": True})
-    
-    # స్టాటిస్టిక్స్ కలెక్షన్ నుండి డేటా తీసుకురావడం
-    stats = stats_db.find_one({"_id": "bot_stats"}) or {}
-    
-    # డేటాబేస్ నుండి ప్లాన్స్ కౌంట్ తీసుకోవడం (డైనమిక్ గా)
+    total_users = users_db.count_documents({})
+    active_users = users_db.count_documents({"status": "active"})
+    blocked_users = users_db.count_documents({"status": "blocked"})
+    premium_users = users_db.count_documents({"plan": "PREMIUM"})
     ads_users = users_db.count_documents({"plan": "ADS_PREMIUM"})
-    money_users = users_db.count_documents({"plan": "PREMIUM"})
 
     stats_text = (
-        "📊 <b>Advanced Bot Statistics</b>\n\n"
-        f"👥 Total Users: {active_users}\n"
-        f"🛑 Total Deactivated: {deactivated_users}\n"
-        f"🔗 Total Links: {stats.get('total_links', 0)}\n"
-        f"✅ Success Downloads: {stats.get('success_downloads', 0)}\n"
-        f"❌ Failed Downloads: {stats.get('failed_downloads', 0)}\n"
-        f"🏘 Added in Groups: {stats.get('added_in_groups', 0)}\n"
-        f"🗑 Group Msgs Deleted: {stats.get('group_msgs_deleted', 0)}\n"
-        f"📺 Ads plan:- {ads_users}\n"
-        f"💎 Money plan:- {money_users}\n"
-        f"🚫 Blocked Users: {stats.get('blocked_users_by_admin', 0)}\n"
+        "📊 <b>Bot Users Statistics</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 Total Users: <b>{total_users}</b>\n"
+        f"🟢 Active Users: <b>{active_users}</b>\n"
+        f"🔴 Blocked Users: <b>{blocked_users}</b>\n\n"
+        "💳 <b>Subscription Stats</b>\n"
+        f"💎 Premium Users: <b>{premium_users}</b>\n"
+        f"📺 Ads Premium Users: <b>{ads_users}</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━"
     )
-    
     await message.reply_text(stats_text, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
-# 📢 NOTIFY COMMAND (Broadcast System) 📢
+# 🌟 3. GLOBAL NOTIFY COMMAND (/notify) 🌟
 # ==========================================
 @Client.on_message(filters.command("notify") & filters.private)
 async def notify_cmd(client, message):
     if not is_admin(message.from_user.id, message.from_user.username):
         return
 
-    # '/notify' పదాన్ని కట్ చేసి మిగిలిన మెసేజ్ తీసుకోవడం
-    if message.reply_to_message:
-        # ఏదైనా మెసేజ్‌కి రిప్లై ఇస్తూ కమాండ్ ఇస్తే ఆ మెసేజ్‌ని తీసుకుంటుంది
-        broadcast_msg = message.reply_to_message
-        text_to_send = broadcast_msg.text or broadcast_msg.caption or ""
-    else:
-        # డైరెక్ట్ గా మెసేజ్ ఇస్తే (మీడియాతో సహా) దాన్ని తీసుకుంటుంది
-        broadcast_msg = message
-        if message.text:
-            text_to_send = message.text.replace("/notify", "").strip()
-        elif message.caption:
-            text_to_send = message.caption.replace("/notify", "").strip()
-        else:
-            await message.reply_text("⚠️ Please provide a message or media to broadcast.")
-            return
-
-    if not text_to_send and not broadcast_msg.media:
-        await message.reply_text("⚠️ Please provide a valid message to broadcast.")
+    reply_msg = message.reply_to_message
+    if not reply_msg:
+        await message.reply_text("⚠️ <b>Format Error:</b>\nPlease reply to a message (text, photo, video, etc.) with /notify to send it to all active users.", parse_mode=enums.ParseMode.HTML)
         return
 
-    # బ్రాడ్‌కాస్ట్ ప్రాసెస్ స్టార్ట్
-    proc_msg = await message.reply_text("📢 <b>Broadcast Started...</b>\nPlease wait, sending to all users.", parse_mode=enums.ParseMode.HTML)
+    status_msg = await message.reply_text("⏳ <b>Broadcasting message...</b>\nPlease wait, this might take a while.", parse_mode=enums.ParseMode.HTML)
     
-    success = 0
-    failed = 0
-    deactivated = 0
-    
-    # డేటాబేస్ లోని యూజర్లందరినీ లూప్ చేయడం
-    users = users_db.find()
-    
-    for user in users:
-        user_id = user["user_id"]
-        try:
-            # మీడియా ఉంటే మీడియా, టెక్స్ట్ ఉంటే టెక్స్ట్ పంపుతుంది
-            if broadcast_msg.media and not message.reply_to_message:
-                await broadcast_msg.copy(chat_id=user_id, caption=text_to_send, parse_mode=enums.ParseMode.HTML)
-            elif broadcast_msg.media and message.reply_to_message:
-                await broadcast_msg.copy(chat_id=user_id)
-            else:
-                await client.send_message(chat_id=user_id, text=text_to_send, parse_mode=enums.ParseMode.HTML)
-            success += 1
-            
-            # టెలిగ్రామ్ స్పామ్ లిమిట్స్ తగలకుండా (Anti-Ban)
-            await asyncio.sleep(0.1) 
-            
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-            failed += 1
-        except (UserIsBlocked, InputUserDeactivated):
-            # యూజర్ బ్లాక్ చేసి ఉంటే డేటాబేస్ లో డీ-యాక్టివేట్ కింద అప్‌డేట్ చేస్తుంది
-            users_db.update_one({"user_id": user_id}, {"$set": {"deactivated": True}})
-            deactivated += 1
-            failed += 1
-        except Exception:
-            failed += 1
+    active_users = users_db.find({"status": "active"})
+    success_count = 0
+    fail_count = 0
 
-    await proc_msg.edit_text(
-        f"📢 <b>Broadcast Completed!</b>\n\n"
-        f"✅ Sent Successfully: {success}\n"
-        f"❌ Failed: {failed}\n"
-        f"🛑 Automatically Deactivated: {deactivated} users",
+    for user in active_users:
+        try:
+            await reply_msg.copy(chat_id=user["user_id"])
+            success_count += 1
+            await asyncio.sleep(0.5) # FloodWait రాకుండా ఉండటానికి ఒక చిన్న గ్యాప్
+        except FloodWait as e:
+            await asyncio.sleep(e.value + 1)
+            await reply_msg.copy(chat_id=user["user_id"])
+            success_count += 1
+        except Exception:
+            # మెసేజ్ వెళ్లకపోతే ఆ యూజర్ బ్లాక్ చేసినట్లు లెక్క
+            users_db.update_one({"user_id": user["user_id"]}, {"$set": {"status": "blocked"}})
+            fail_count += 1
+
+    await status_msg.edit_text(
+        f"✅ <b>Broadcast Completed!</b>\n\n"
+        f"📬 Successfully sent to: <b>{success_count}</b> users.\n"
+        f"❌ Failed (Blocked bot): <b>{fail_count}</b> users.",
         parse_mode=enums.ParseMode.HTML
     )
 
 # ==========================================
-# 🛠 PROBLEMS COMMAND (Error Tracker) 🛠
+# 🌟 4. PROBLEM LOGGING (ఫాల్‌బ్యాక్ ఫెయిల్ అయినప్పుడు) 🌟
 # ==========================================
+def log_bot_problem(error_message, location):
+    """ఈ ఫంక్షన్ ద్వారా ఎక్కడ ఎర్రర్ వచ్చినా దాన్ని డేటాబేస్ లో సేవ్ చేస్తాం"""
+    log_data = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "error": str(error_message),
+        "location": str(location),
+        "status": "Unresolved"
+    }
+    logs_collection.insert_one(log_data)
+
 @Client.on_message(filters.command("problems") & filters.private)
 async def problems_cmd(client, message):
     if not is_admin(message.from_user.id, message.from_user.username):
         return
 
-    # డేటాబేస్ నుండి రీసెంట్ 10 ఎర్రర్స్ తీసుకురావడం
-    recent_errors = list(errors_db.find().sort("_id", -1).limit(10))
+    # పరిష్కరించబడని ఎర్రర్స్ ని లాగడం
+    unresolved_logs = list(logs_collection.find({"status": "Unresolved"}).sort("_id", -1).limit(10))
     
-    if not recent_errors:
+    if not unresolved_logs:
         await message.reply_text("✅ <b>No Problems Found!</b>\nYour bot is running perfectly fine with 0 errors.", parse_mode=enums.ParseMode.HTML)
         return
 
-    problems_text = "🛠 <b>Bot Error Logs (Recent 10)</b> 🛠\n\n"
-    for i, err in enumerate(recent_errors, 1):
-        problems_text += f"<b>{i}. Time:</b> {err.get('time')}\n"
-        problems_text += f"<b>Module:</b> {err.get('module')}\n"
-        problems_text += f"<b>Error:</b> <code>{err.get('error')}</code>\n"
-        problems_text += "━━━━━━━━━━━━━━━━\n"
+    text = "🚨 <b>Recent Bot Problems (Internal Errors)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    for log in unresolved_logs:
+        text += f"🕒 <b>Time:</b> {log['timestamp']}\n"
+        text += f"📍 <b>Location:</b> {log['location']}\n"
+        text += f"❌ <b>Error:</b> <code>{log['error']}</code>\n"
+        text += "────────────────────\n"
 
-    # ఇక్కడ అడ్మిన్ కి లాగ్స్ క్లియర్ చేసుకునే అవకాశం కూడా ఇస్తున్నాను
+    # ఇక్కడ కీబోర్డ్ లైన్ కోసం పైన ఇంపోర్ట్ యాడ్ చేశాం!
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🗑 Clear All Logs", callback_data="clear_problems_log")]])
-    await message.reply_text(problems_text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+    await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex(r"^clear_problems_log$"))
 async def clear_logs_callback(client, callback_query):
     if not is_admin(callback_query.from_user.id, callback_query.from_user.username):
+        await callback_query.answer("❌ You are not an admin!", show_alert=True)
         return
-    errors_db.delete_many({}) # లాగ్స్ అన్నీ క్లియర్
-    await callback_query.message.edit_text("✅ <b>All Error Logs Cleared Successfully!</b>", parse_mode=enums.ParseMode.HTML)
 
+    # డేటాబేస్ లో ఉన్న లాగ్స్ అన్నింటినీ డిలీట్ చేయడం లేదా రిజాల్వ్ చేయడం
+    logs_collection.update_many({"status": "Unresolved"}, {"$set": {"status": "Resolved"}})
+    await callback_query.message.edit_text("✅ <b>All problem logs have been cleared!</b>", parse_mode=enums.ParseMode.HTML)
