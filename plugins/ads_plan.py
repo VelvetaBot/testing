@@ -6,8 +6,8 @@ from datetime import datetime
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote>💎 Velveta Premium User</blockquote>\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote>📺 Velveta Semi Premium User</blockquote>\n"
+    if plan == "PREMIUM": return "<blockquote>💎 <b>Velveta Premium User</b>\n</blockquote>\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote>💎 <b>Velveta Semi Premium User</b>\n</blockquote>\n"
     else: return ""
 
 @Client.on_callback_query(filters.regex(r"^pay\|ads$"))
