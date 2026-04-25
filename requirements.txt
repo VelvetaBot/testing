@@ -6,3 +6,5 @@ yt-dlp @ git+https://github.com/yt-dlp/yt-dlp.git@master
 pytubefix @ git+https://github.com/JuanBindez/pytubefix.git@main
 pytube
 youtube-dl
+google-generativeai
+
