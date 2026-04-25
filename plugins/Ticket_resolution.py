@@ -2,9 +2,8 @@ import os
 import random
 import string
 from datetime import datetime
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.exceptions import StopPropagation
 from database import users_db
 import config
 
