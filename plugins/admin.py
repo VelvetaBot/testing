@@ -2,7 +2,7 @@ import os
 import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton # 🌟 ఈ లైన్ మిస్ అవ్వడం వల్లే ఎర్రర్ వచ్చింది 🌟
-from pyrogram.exceptions import FloodWait
+from pyrogram.errors import FloodWait
 from database import users_db, logs_collection
 import config
 from datetime import datetime
