@@ -2,44 +2,63 @@ import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import users_db
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-# ==========================================
-# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
-# ==========================================
+# 🌟 పక్కా ఇండియన్ స్టాండర్డ్ టైమ్ (IST) సెటప్ 🌟
+IST = timezone(timedelta(hours=5, minutes=30))
+
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    # మొబైల్ స్క్రీన్ కి సరిపోయేలా స్పేస్‌లు సగానికి తగ్గించాను
     if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 Velveta Semi Premium </b>ㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     else: return ""
 
 # ==========================================
-# 🌟 ఎక్స్‌పైరీ చెకింగ్ (ప్రతిసారి యూజర్ కమాండ్ వాడినప్పుడు) 🌟
+# 🌟 MY PLAN COMMAND (IST & COUNTDOWN LOGIC) 🌟
 # ==========================================
-async def check_plan_expiry(client, user_id):
+@Client.on_message(filters.command(["my_plan", "myplan"]) & filters.private)
+async def my_plan_cmd(client, message):
+    user_id = message.from_user.id
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
+    header = get_header(user_id)
     
-    if plan != "FREE":
-        expiry_date_str = user.get("plan_expiry")
-        if expiry_date_str:
-            expiry_date = datetime.strptime(expiry_date_str, "%Y-%m-%d").date()
-            if datetime.now().date() > expiry_date:
-                # 🔴 ప్లాన్ ఎక్స్‌పైర్ అయితే ఆటోమేటిక్ గా FREE కి మార్చడం
+    if plan == "FREE":
+        await message.reply_text(f"{header}You are currently on the <b>FREE</b> plan.\n\n👉 Send /upgrade to get Premium features!", parse_mode=enums.ParseMode.HTML)
+    else:
+        expiry_str = user.get("plan_expiry")
+        started_str = user.get("plan_started")
+        
+        if expiry_str:
+            # డేటాబేస్ లో ఉన్న టైమ్ ని తీసుకుంటున్నాం
+            expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+            now = datetime.now(IST)
+            
+            # ఒకవేళ ఎక్స్‌పైర్ అయిపోతే..
+            if now > expiry_date:
                 users_db.update_one({"user_id": user_id}, {"$set": {"plan": "FREE", "plan_started": None, "plan_expiry": None}})
-                
-                # 🔴 మీరు అడిగిన వార్నింగ్ మెసేజ్
-                text = (
-                    "⚠️ <b>Your Plan Has Expired!</b>\n\n"
-                    "Your Premium/Ads plan validity has ended. Your account has been downgraded to the FREE plan.\n\n"
-                    "👉 Send /upgrade to renew your plan and unlock all features!"
-                )
-                try:
-                    await client.send_message(chat_id=user_id, text=text, parse_mode=enums.ParseMode.HTML)
-                except:
-                    pass
+                await message.reply_text(f"{header}⚠️ <b>Your Plan Has Expired!</b>\n\nYour Premium/Ads plan validity has ended. Your account has been downgraded to the FREE plan.\n\n👉 Send /upgrade to renew!", parse_mode=enums.ParseMode.HTML)
+                return
+
+            # మనీ ప్లాన్ కి IST టైమ్, యాడ్స్ కి కౌంట్‌డౌన్
+            if plan == "PREMIUM":
+                expiry_display = f"{expiry_date.strftime('%Y-%m-%d %I:%M %p')} (IST)"
+            else:
+                remaining = expiry_date - now
+                days = remaining.days
+                hours, remainder = divmod(remaining.seconds, 3600)
+                minutes, _ = divmod(remainder, 60)
+                expiry_display = f"{days} Days, {hours} Hours, {minutes} Mins left" if days > 0 else f"{hours} Hours, {minutes} Mins left"
+            
+            text = (
+                f"{header}📊 <b>Your Current Plan Details:</b>\n━━━━━━━━━━━━━━\n\n"
+                f"👑 <b>Plan:</b> {plan.replace('_', ' ')}\n"
+                f"🕒 <b>Activated On:</b> {started_str}\n"
+                f"⏳ <b>Validity:</b> <code>{expiry_display}</code>\n\n"
+                f"Enjoy your premium features! 🚀"
+            )
+            await message.reply_text(text, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
 # 🌟 అప్‌గ్రేడ్ కమాండ్ లాజిక్ 🌟
@@ -48,10 +67,6 @@ async def check_plan_expiry(client, user_id):
 @Client.on_callback_query(filters.regex("^upgrade_menu$"))
 async def upgrade_cmd(client, event):
     user_id = event.from_user.id
-    
-    # ముందు ప్లాన్ ఎక్స్‌పైర్ అయ్యిందేమో చెక్ చేయి
-    await check_plan_expiry(client, user_id)
-    
     header = get_header(user_id)
     text = f"{header}💳 <b>Choose a payment method:</b> Money or Ads"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Ads", callback_data="pay|ads"), InlineKeyboardButton("Money", callback_data="pay|money")]])
@@ -63,10 +78,7 @@ async def upgrade_cmd(client, event):
 
 @Client.on_callback_query(filters.regex(r"^pay\|money$"))
 async def pay_money(client, callback_query):
-    user_id = callback_query.from_user.id
-    await check_plan_expiry(client, user_id)
-    header = get_header(user_id)
-    
+    header = get_header(callback_query.from_user.id)
     text = (
         f"{header}🔸 <b>Money Plan</b>\n━━━━━━━━━━━━━━\n"
         "🚀 <b>Features:</b>\n"
@@ -129,34 +141,38 @@ async def method_crypto(client, callback_query):
     await callback_query.message.edit_text(f"{header}📦 Please select a plan to continue", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 # ==========================================
-# 🌟 ఫైనల్ పేమెంట్ వెరిఫికేషన్ & డేటాబేస్ అప్‌డేట్ 🌟
+# 🌟 ఫైనల్ పేమెంట్ వెరిఫికేషన్ & IST డేటాబేస్ అప్‌డేట్ 🌟
 # ==========================================
 @Client.on_callback_query(filters.regex(r"^buy\|(upi|stars|crypto)\|(.*)\|(.*)$"))
 async def process_buy_money(client, callback_query):
     parts = callback_query.data.split("|")
     method = parts[1]
     plan_id = parts[2]
-    days_to_add = int(parts[3])
     
-    now = datetime.now()
+    # 🌟 లోకల్ ఇండియా టైమ్ (IST) ప్రకారం క్యాలిక్యులేషన్ 🌟
+    now = datetime.now(IST)
     user_id = callback_query.from_user.id
     
     if plan_id == "completed":
-        # నోట్: టెంపరరీగా టెస్టింగ్ కోసం "Completed" నొక్కితే 30 రోజులు ఇస్తున్నాం.
-        # ఒరిజినల్ ప్రొడక్షన్ లో మీరు పేమెంట్ వెరిఫై చేసాకే దీన్ని అప్రూవ్ చేయాలి.
-        expiry_date = (now + timedelta(days=30)).date() 
+        # టెంపరరీగా 30 రోజులు ఇస్తున్నాం (తర్వాత మీ API ద్వారా మార్చుకోవచ్చు)
+        expiry_date = now + timedelta(days=30)
         
+        # డేటాబేస్‌లో IST డేట్ & టైమ్ ని సేవ్ చేయడం
         users_db.update_one(
             {"user_id": user_id}, 
-            {"$set": {"plan": "PREMIUM", "plan_started": str(now.date()), "plan_expiry": str(expiry_date)}}
+            {"$set": {
+                "plan": "PREMIUM", 
+                "plan_started": now.strftime("%Y-%m-%d %I:%M %p (IST)"), 
+                "plan_expiry": expiry_date.strftime("%Y-%m-%d %H:%M:%S")
+            }}
         )
         header = get_header(user_id)
         text = (
             f"{header}🎉 <b>Plan Activated Successfully!</b>\n\n"
             f"💳 Payment Mode: {method.upper()}\n"
             f"🧾 Amount Paid: Verified\n"
-            f"🕒 Activated On: {now.strftime('%Y-%m-%d %H:%M')}\n"
-            f"⏳ <b>Valid Until: {expiry_date}</b>\n\n"
+            f"🕒 Activated On: {now.strftime('%Y-%m-%d %I:%M %p')} (IST)\n"
+            f"⏳ <b>Valid Until: {expiry_date.strftime('%Y-%m-%d %I:%M %p')} (IST)</b>\n\n"
             f"🚀 <b>Features Unlock 🔓:-</b>\n"
             "✔️ Unlimited Downloads\n✔️ Playlist Downloads\n✔️ Anti Ban Speed\n"
             "✔️ High priority Support\n✔️ Free Primium Banner\n✔️ Scheduled uploading\n"
@@ -169,7 +185,5 @@ async def process_buy_money(client, callback_query):
         )
         await callback_query.message.edit_text(text, parse_mode=enums.ParseMode.HTML)
     else:
-        # యూజర్ ప్లాన్ బటన్ నొక్కినప్పుడు, ఆ ప్లాన్ కి సంబంధించిన డేటా సేవ్ చేసి వెరిఫికేషన్ అడగడం
-        users_db.update_one({"user_id": user_id}, {"$set": {"pending_plan_days": days_to_add}})
         header = get_header(user_id)
         await callback_query.message.edit_text(f"{header}Please pay the amount for {plan_id} and click ✅ Completed to verify.", parse_mode=enums.ParseMode.HTML)
