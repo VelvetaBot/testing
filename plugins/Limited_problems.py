@@ -1,37 +1,16 @@
 import re
 import requests
-import asyncio
-import google.generativeai as genai
-from pyrogram import Client, filters, enums, StopPropagation
+from pyrogram import Client, filters, enums
+from pyrogram import StopPropagation
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import users_db
 import config
 
-# ==========================================
-# 🌟 GOOGLE GEMINI AI CONFIGURATION 🌟
-# ==========================================
-GEMINI_API_KEY = "AIzaSyB3KfZfHcUlN9n4s6teCk0CqO5WkCFOIaU"
-genai.configure(api_key=GEMINI_API_KEY)
-
-async def get_gemini_smart_reply(user_text):
-    """యూజర్ పంపిన టెక్స్ట్ ని బట్టి జెమినీ ద్వారా స్మార్ట్ రిప్లై తెచ్చే ఫంక్షన్"""
-    def fetch_ai_response():
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
-            f"You are a polite and helpful customer support AI for the 'Velveta YouTube Downloader Telegram Bot'. "
-            f"A user sent this message: '{user_text}'. "
-            f"Reply in 1 or 2 short sentences in the SAME language the user used. "
-            f"Politely explain that you can only process YouTube links and ask them to send a valid YouTube link."
-        )
-        response = model.generate_content(prompt)
-        return response.text
-
-    try:
-        # టెలిగ్రామ్ బాట్ ఆగిపోకుండా బ్యాక్‌గ్రౌండ్ లో AI తో మాట్లాడే లాజిక్
-        return await asyncio.to_thread(fetch_ai_response)
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
-        return "I couldn't understand that. Please send a valid YouTube link or use a command from the menu."
+# 🌟 కొత్త Gemini API (google-genai) ఇంపోర్ట్ 🌟
+try:
+    from google import genai
+except ImportError:
+    genai = None
 
 # 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
@@ -73,14 +52,14 @@ async def reveal_cmd(client, message):
     else:
         yt_id = extract_yt_id(saved_url)
         if yt_id: 
-            # పాత ఫైల్ నుండి క్వాలిటీ బటన్స్ పిలుస్తున్నాం
             from plugins.engine import show_quality_buttons
             await show_quality_buttons(client, message, saved_url, yt_id, user_id, header)
 
 # ==========================================
 # 2. GLOBAL PROBLEM INTERCEPTOR (Group -6)
 # ==========================================
-@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_pref_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot"]), group=-6)
+# అన్ని వాలిడ్ కమాండ్స్ ని ఇగ్నోర్ చేసేలా ఫిల్టర్ సెట్ చేశాను
+@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_pref_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot", "raise_ticket", "View_tickets", "view_tickets", "Resolved"]), group=-6)
 async def problem_interceptor(client, message):
     text = message.text
     user_id = message.from_user.id
@@ -88,7 +67,7 @@ async def problem_interceptor(client, message):
     
     yt_id = extract_yt_id(text)
     
-    # 🔴 1. LIVE STREAM ERROR (YouTube API వాడి చెక్ చేయడం) 🔴
+    # 🔴 1. LIVE STREAM ERROR 🔴
     if yt_id:
         api_key = getattr(config.Config, "YOUTUBE_API_KEY", None)
         if api_key:
@@ -108,19 +87,35 @@ async def problem_interceptor(client, message):
             except Exception:
                 pass
     
-    # 🤖 2. COMPLETELY INVALID LINK / UNKNOWN TEXT (GEMINI AI ACTIVATION) 🤖
+    # ❌ 2. INVALID LINK / GEMINI AI CHAT ❌
     if not yt_id and "youtu" not in text:
-        proc_msg = await message.reply_text("🤖 <i>Processing...</i>", parse_mode=enums.ParseMode.HTML)
+        gemini_key = getattr(config.Config, "GEMINI_API_KEY", None)
         
-        # యూజర్ పెట్టిన టెక్స్ట్ ని జెమినీకి పంపి రిప్లై తెచ్చుకోవడం
-        ai_reply = await get_gemini_smart_reply(text)
-        
-        err_text = (
-            f"{header}✨ <b>Velveta AI Assistant:</b>\n\n"
-            f"{ai_reply}\n\n"
-            f"If you want further support, please message us! 👇"
-        )
-        await proc_msg.edit_text(err_text, reply_markup=get_support_btn(), parse_mode=enums.ParseMode.HTML)
+        # జెమినీ కీ ఉంటే స్మార్ట్ రిప్లై ఇస్తుంది!
+        if gemini_key and genai:
+            try:
+                gemini_client = genai.Client(api_key=gemini_key)
+                prompt = f"A user sent this message to my YouTube Downloader Telegram bot: '{text}'. Give a short, polite 1-2 sentence reply in English explaining that you are a bot and can only download YouTube links. Do not use bold formatting or markdown."
+                
+                response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt
+                )
+                ai_reply = response.text.strip()
+                err_text = f"{header}🤖 <b>AI Assistant:</b>\n\n{ai_reply}\n\n👇 If you need human support, click below!"
+                
+            except Exception as e:
+                print(f"Gemini API Error: {e}")
+                err_text = f"{header}❌ <b>Invalid Input!</b>\n\nPlease send a valid YouTube link.\n\n👇 If you want further support, please message us!"
+        else:
+            # కీ లేకపోతే మన నార్మల్ మెసేజ్
+            err_text = (
+                f"{header}❌ <b>Invalid Input!</b>\n\n"
+                f"I couldn't understand that. Please send a valid YouTube link or use a command from the menu.\n\n"
+                f"If you want further support, please message us! 👇"
+            )
+            
+        await message.reply_text(err_text, reply_markup=get_support_btn(), parse_mode=enums.ParseMode.HTML)
         raise StopPropagation
 
 # ==========================================
