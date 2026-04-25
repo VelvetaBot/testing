@@ -233,8 +233,12 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if any(h >= 240 for h in available_h) else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
     btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if any(h >= 144 for h in available_h) else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
     
+    # 🌟 ఇక్కడే మార్పు చేశాను (ఒక లైన్‌లో రెండు బటన్స్ వచ్చేలా) 🌟
     buttons = [
-        [btn_4k], [btn_2k], [btn_1080], [btn_720], [btn_480], [btn_360], [btn_240], [btn_144],
+        [btn_4k, btn_2k],
+        [btn_1080, btn_720],
+        [btn_480, btn_360],
+        [btn_240, btn_144],
         [InlineKeyboardButton("🎵 Audio Only (MP3)", callback_data=f"start_dl|audio|{yt_id}")]
     ]
 
