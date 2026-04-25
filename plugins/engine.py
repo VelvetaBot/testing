@@ -21,15 +21,16 @@ SCHEDULER_STARTED = False
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    # ఆ ఖాళీ స్థలంలో "కనిపించని అక్షరాలు" ఉన్నాయి, వాటిని యాజ్ ఇట్ ఈజ్ గా కాపీ చేసుకోండి
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b>💎 Velveta Semi Premium User</b>ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>"
+    # మొబైల్ స్క్రీన్ కి సరిపోయేలా స్పేస్‌లు సగానికి తగ్గించాను
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>                                                                                                                                                                                       </blockquote>\n\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b>💎 Velveta Semi Premium User </b>                                                                                                                            </blockquote>"
     else: return ""
 
 def extract_yt_id(text):
     match = re.search(r"(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})", text)
     return match.group(2) if match else None
 
+# 🌟 వాల్‌పేపర్ లేదా యూట్యూబ్ ఒరిజినల్ థంబ్‌నైల్ కోసం అప్‌డేట్ చేసిన ఫంక్షన్ 🌟
 def get_yt_metadata(yt_id):
     try:
         api_key = getattr(config.Config, "YOUTUBE_API_KEY", None)
@@ -40,7 +41,15 @@ def get_yt_metadata(yt_id):
         if response.get("items"):
             snippet = response["items"][0]["snippet"]
             title = snippet.get("title", "YouTube Video")
-            return title, None
+            
+            # బెస్ట్ థంబ్‌నైల్ లాగడం
+            thumbnails = snippet.get("thumbnails", {})
+            thumb_url = None
+            for res in ["maxres", "standard", "high", "medium", "default"]:
+                if res in thumbnails:
+                    thumb_url = thumbnails[res]["url"]
+                    break
+            return title, thumb_url
         return "YouTube Video", None
     except Exception:
         return "YouTube Video", None
@@ -224,7 +233,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
-    # 🌟 డైనమిక్ బటన్స్ & తాళం 🔒 🌟
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if any(h >= 2160 for h in available_h) else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
     btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}") if any(h >= 1440 for h in available_h) else InlineKeyboardButton("🔒 2K (Mini HD)", callback_data="locked_quality")
     btn_1080 = InlineKeyboardButton("🖥 1080p (Full HD)", callback_data=f"dl|1080p|{yt_id}") if any(h >= 1080 for h in available_h) else InlineKeyboardButton("🔒 1080p (Full HD)", callback_data="locked_quality")
@@ -234,7 +242,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if any(h >= 240 for h in available_h) else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
     btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if any(h >= 144 for h in available_h) else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
     
-    # 🌟 ఇక్కడే మార్పు చేశాను (ఒక లైన్‌లో రెండు బటన్స్ వచ్చేలా) 🌟
     buttons = [
         [btn_4k, btn_2k],
         [btn_1080, btn_720],
@@ -247,13 +254,11 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     keyboard = InlineKeyboardMarkup(buttons)
     await safe_edit_text(proc_msg, text, reply_markup=keyboard)
 
-# 🌟 తాళం నొక్కితే పాప్ అప్ 🌟
 @Client.on_callback_query(filters.regex(r"^locked_quality$"))
 async def locked_quality_alert(client, callback_query):
     alert_text = "🚫 OOPS! Sorry!\n\nThe requested quality is NOT available for this specific YouTube link. 😔\n\n👉 Please select an unlocked quality from the menu! 🎥"
     await callback_query.answer(alert_text, show_alert=True)
 
-# 🌟 144p వార్నింగ్ లాజిక్ 🌟
 @Client.on_callback_query(filters.regex(r"^dl\|(.*)\|(.*)$"))
 async def handle_quality_click(client, callback_query):
     _, quality, yt_id = callback_query.data.split("|")
@@ -273,7 +278,6 @@ async def handle_quality_click(client, callback_query):
         ])
         await safe_edit_text(callback_query.message, text, reply_markup=keyboard)
     else:
-        # 144p కాకపోతే డైరెక్ట్ డౌన్‌లోడ్ స్టార్ట్
         await start_download_process(client, callback_query, quality, f"https://youtu.be/{yt_id}")
 
 @Client.on_callback_query(filters.regex(r"^back_to_q\|(.*)$"))
@@ -302,17 +306,32 @@ async def start_download_process(client, event, quality, url):
     sent_msg = event.message
 
     try:
-        title, _ = get_yt_metadata(yt_id)
+        # 🌟 థంబ్‌నైల్ లాజిక్ స్టార్ట్ 🌟
+        title, yt_thumb_url = get_yt_metadata(yt_id)
         video_title = title if title != "YouTube Video" else f"Downloaded Video"
+
+        custom_thumb = user.get("wallpaper_path")
+        final_thumb = custom_thumb if custom_thumb and os.path.exists(custom_thumb) else None
+
+        # కస్టమ్ వాల్‌పేపర్ లేకపోతే, అఫీషియల్ యూట్యూబ్ థంబ్‌నైల్ ని డౌన్‌లోడ్ చేయడం
+        if not final_thumb and yt_thumb_url:
+            yt_thumb_path = f"downloads/{yt_id}_thumb.jpg"
+            if not os.path.exists("downloads"): os.makedirs("downloads")
+            try:
+                img_data = requests.get(yt_thumb_url).content
+                with open(yt_thumb_path, 'wb') as handler:
+                    handler.write(img_data)
+                final_thumb = yt_thumb_path
+            except Exception:
+                pass
+        # 🌟 థంబ్‌నైల్ లాజిక్ ఎండ్ 🌟
 
         await safe_edit_text(sent_msg, f"{header}📥 <b>Processing & Downloading...</b>\n🎬 {video_title}")
 
-        # మన మల్టీ ప్యాకేజీ (4-Layer) డౌన్‌లోడర్ పిలుస్తున్నాం
         file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
 
         start_time = time.time()
         
-        # 🌟 ఫైనల్ ఎక్స్‌ట్రాక్ట్ ఆడియో బటన్ 🌟
         extract_kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔊 Extract Audio MP3", callback_data=f"start_dl|audio|{yt_id}")]])
 
         if quality == "audio":
@@ -321,6 +340,7 @@ async def start_download_process(client, event, quality, url):
                 audio=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
                 duration=v_duration,
+                thumb=final_thumb, # 🌟 ఇక్కడే థంబ్‌నైల్ అటాచ్ అవుతుంది
                 reply_to_message_id=reply_to_id,
                 progress=progress_bar, 
                 progress_args=(sent_msg, video_title, header, start_time)
@@ -331,8 +351,9 @@ async def start_download_process(client, event, quality, url):
                 video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
                 width=v_width, height=v_height, duration=v_duration,
+                thumb=final_thumb, # 🌟 ఇక్కడే థంబ్‌నైల్ అటాచ్ అవుతుంది
                 reply_to_message_id=reply_to_id,
-                reply_markup=extract_kb, # ఇక్కడ ఆడియో బటన్ అటాచ్ అవుతుంది
+                reply_markup=extract_kb, 
                 progress=progress_bar, 
                 progress_args=(sent_msg, video_title, header, start_time), 
                 supports_streaming=True
@@ -340,11 +361,13 @@ async def start_download_process(client, event, quality, url):
         
         await sent_msg.delete()
         if os.path.exists(file_path): os.remove(file_path)
+        # వాడిన థంబ్‌నైల్ ఫోటోని సర్వర్ నుండి డిలీట్ చేయడం (కస్టమ్ ది కాదు)
+        if final_thumb and final_thumb != custom_thumb and os.path.exists(final_thumb):
+            os.remove(final_thumb)
 
     except Exception as e:
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
 
-# 🌟 నార్మల్ గా లింక్ పంపినప్పుడు 🌟
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_pref_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot"]))
 async def text_handler(client, message):
     yt_id = extract_yt_id(message.text)
