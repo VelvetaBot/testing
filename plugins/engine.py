@@ -4,15 +4,20 @@ import time
 import asyncio
 import requests
 import yt_dlp
-import youtube_dl # 4వ ప్యాకేజీ
-from pytubefix import YouTube as PyTubeFixDL # 2వ ప్యాకేజీ
-from pytube import YouTube as PyTubeDL # 3వ ప్యాకేజీ
+import youtube_dl
+from pytubefix import YouTube as PyTubeFixDL
+from pytube import YouTube as PyTubeDL
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, MessageNotModified
 from database import users_db
 import config
 from datetime import datetime
+
+# 🌟 ఇతర ఫైల్స్ నుండి ఫంక్షన్స్ ఇక్కడ లింక్ చేశాను (ఇదే మనం మర్చిపోయింది) 🌟
+from plugins.cookie_manager import get_working_cookie_file
+from plugins.fallback import run_ultimate_fallback
+from plugins.admin import log_bot_problem
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
@@ -21,16 +26,14 @@ SCHEDULER_STARTED = False
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    # మొబైల్ స్క్రీన్ కి సరిపోయేలా స్పేస్‌లు సగానికి తగ్గించాను
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>                                                                                                                                                                                       </blockquote>\n\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b>💎 Velveta Semi Premium User </b>                                                                                                                            </blockquote>"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User </b>ㅤㅤㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b>📺 Velveta Semi Premium </b>ㅤㅤㅤㅤㅤㅤ</blockquote>\n\n"
     else: return ""
 
 def extract_yt_id(text):
     match = re.search(r"(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})", text)
     return match.group(2) if match else None
 
-# 🌟 వాల్‌పేపర్ లేదా యూట్యూబ్ ఒరిజినల్ థంబ్‌నైల్ కోసం అప్‌డేట్ చేసిన ఫంక్షన్ 🌟
 def get_yt_metadata(yt_id):
     try:
         api_key = getattr(config.Config, "YOUTUBE_API_KEY", None)
@@ -42,7 +45,6 @@ def get_yt_metadata(yt_id):
             snippet = response["items"][0]["snippet"]
             title = snippet.get("title", "YouTube Video")
             
-            # బెస్ట్ థంబ్‌నైల్ లాగడం
             thumbnails = snippet.get("thumbnails", {})
             thumb_url = None
             for res in ["maxres", "standard", "high", "medium", "default"]:
@@ -88,7 +90,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
-    # --- ATTEMPT 1: YT-DLP (High Priority) ---
+    # --- ATTEMPT 1: YT-DLP ---
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -131,7 +133,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         except Exception as e2:
             print(f"PyTubeFix Failed: {e2}")
             
-            # --- ATTEMPT 3: PyTube (Original) ---
+            # --- ATTEMPT 3: PyTube ---
             try:
                 yt = PyTubeDL(url)
                 if quality == "audio":
@@ -146,7 +148,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             except Exception as e3:
                 print(f"PyTube Failed: {e3}")
                 
-                # --- ATTEMPT 4: Youtube-dl (The Last Resort) ---
+                # --- ATTEMPT 4: Youtube-dl ---
                 try:
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
@@ -168,7 +170,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                             fname = fname.rsplit('.', 1)[0] + '.mp3'
                         return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
                 except Exception as e4:
-                    raise Exception(f"Ultimate Failure! All 4 Packages crashed.\n1:{e1}\n2:{e2}\n3:{e3}\n4:{e4}")
+                    raise Exception(f"Ultimate Failure! All 4 Packages crashed. 1:{e1} | 2:{e2} | 3:{e3} | 4:{e4}")
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -188,7 +190,6 @@ async def safe_edit_text(msg, text, reply_markup=None):
     except Exception:
         pass
 
-# 🌟 అడ్వాన్స్డ్ ప్రోగ్రెస్ బార్ 🌟
 async def progress_bar(current, total, msg, title, header, start_time):
     global EDIT_TIME
     if total > 0:
@@ -230,6 +231,9 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
+    
+    # క్వాలిటీస్ చెక్ చేయడానికి ముందే ఫ్రెష్ కుకీస్ ని లోడ్ చేస్తున్నాం
+    get_working_cookie_file(0) 
     
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
@@ -306,14 +310,12 @@ async def start_download_process(client, event, quality, url):
     sent_msg = event.message
 
     try:
-        # 🌟 థంబ్‌నైల్ లాజిక్ స్టార్ట్ 🌟
         title, yt_thumb_url = get_yt_metadata(yt_id)
         video_title = title if title != "YouTube Video" else f"Downloaded Video"
 
         custom_thumb = user.get("wallpaper_path")
         final_thumb = custom_thumb if custom_thumb and os.path.exists(custom_thumb) else None
 
-        # కస్టమ్ వాల్‌పేపర్ లేకపోతే, అఫీషియల్ యూట్యూబ్ థంబ్‌నైల్ ని డౌన్‌లోడ్ చేయడం
         if not final_thumb and yt_thumb_url:
             yt_thumb_path = f"downloads/{yt_id}_thumb.jpg"
             if not os.path.exists("downloads"): os.makedirs("downloads")
@@ -324,11 +326,36 @@ async def start_download_process(client, event, quality, url):
                 final_thumb = yt_thumb_path
             except Exception:
                 pass
-        # 🌟 థంబ్‌నైల్ లాజిక్ ఎండ్ 🌟
 
         await safe_edit_text(sent_msg, f"{header}📥 <b>Processing & Downloading...</b>\n🎬 {video_title}")
 
-        file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+        # 🌟 కుకీ రొటేషన్ అండ్ ప్యాకేజీ ఫాల్‌బ్యాక్ లూప్ ఇక్కడే ఉంది 🌟
+        file_path = None
+        download_success = False
+        last_error = ""
+
+        for attempt in range(5):
+            # ఈ ఫంక్షన్ ద్వారా ఐదు కుకీస్ ని ఒక్కొక్కటిగా చెక్ చేసి పంపుతుంది
+            cookie_file = get_working_cookie_file(attempt) 
+            
+            try:
+                file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+                download_success = True
+                break # ఒక్కసారి సక్సెస్ అవ్వగానే లూప్ ఆగిపోతుంది
+            except Exception as e:
+                last_error = str(e)
+                print(f"Cookie/Package Loop Attempt {attempt+1} Failed: {e}")
+                continue # ఫెయిల్ అయితే నెక్స్ట్ కుకీకి మారుతుంది
+
+        if not download_success:
+            # 🌟 5 కుకీస్ మరియు 4 ప్యాకేజీలు ఫెయిల్ అయితే... 🌟
+            # 1. ప్రాబ్లమ్స్ లాగ్ లోకి ఎర్రర్ పంపడం
+            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
+            
+            # 2. అల్టిమేట్ యూజర్‌బాట్ ఫాల్‌బ్యాక్ కి కనెక్ట్ చేయడం!
+            await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
+            await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
+            return
 
         start_time = time.time()
         
@@ -340,7 +367,7 @@ async def start_download_process(client, event, quality, url):
                 audio=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
                 duration=v_duration,
-                thumb=final_thumb, # 🌟 ఇక్కడే థంబ్‌నైల్ అటాచ్ అవుతుంది
+                thumb=final_thumb, 
                 reply_to_message_id=reply_to_id,
                 progress=progress_bar, 
                 progress_args=(sent_msg, video_title, header, start_time)
@@ -351,7 +378,7 @@ async def start_download_process(client, event, quality, url):
                 video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
                 width=v_width, height=v_height, duration=v_duration,
-                thumb=final_thumb, # 🌟 ఇక్కడే థంబ్‌నైల్ అటాచ్ అవుతుంది
+                thumb=final_thumb, 
                 reply_to_message_id=reply_to_id,
                 reply_markup=extract_kb, 
                 progress=progress_bar, 
@@ -361,11 +388,11 @@ async def start_download_process(client, event, quality, url):
         
         await sent_msg.delete()
         if os.path.exists(file_path): os.remove(file_path)
-        # వాడిన థంబ్‌నైల్ ఫోటోని సర్వర్ నుండి డిలీట్ చేయడం (కస్టమ్ ది కాదు)
         if final_thumb and final_thumb != custom_thumb and os.path.exists(final_thumb):
             os.remove(final_thumb)
 
     except Exception as e:
+        log_bot_problem(str(e), "engine.py - Upload Stage")
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
 
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_pref_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot"]))
