@@ -14,11 +14,13 @@ from database import users_db
 import config
 from datetime import datetime
 
+# కుకీస్ ఫైల్ కి ఇంజిన్ తో పని లేదు కాబట్టి దీన్ని పైన ఉంచవచ్చు
 from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
+# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
@@ -52,53 +54,12 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
+# 🌟 YT-DLP క్రాష్ అవ్వకుండా ఆపడానికి కస్టమ్ లాగర్ 🌟
 class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
     def error(self, msg):
         raise Exception(msg)
-
-def get_available_formats(url, proxy=None):
-    # 🌟 ముందుగా కుకీస్ లేకుండా ట్రై చేస్తాం (దీనివల్ల YouTube 4K క్వాలిటీలను దాచదు) 🌟
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}},
-        'logger': MyLogger() 
-    }
-    if proxy and proxy.lower() != "none":
-        opts['proxy'] = proxy
-
-    available_heights = set()
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats = info.get('formats', [])
-            for f in formats:
-                h = f.get('height')
-                if h and isinstance(h, int):
-                    available_heights.add(h)
-    except Exception:
-        # ఒకవేళ వీడియో Age-restricted అయ్యి కుకీస్ లేకపోతే ఫెయిల్ అవుతుంది, అప్పుడు కుకీస్ తో ట్రై చేస్తాం
-        opts['cookiefile'] = 'cookies.txt'
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                formats = info.get('formats', [])
-                for f in formats:
-                    h = f.get('height')
-                    if h and isinstance(h, int):
-                        available_heights.add(h)
-        except Exception:
-            pass
-            
-    # ఏ క్వాలిటీ దొరకకపోయినా, డీఫాల్ట్ గా బటన్స్ అన్‌లాక్ చేసి ఉంచడానికి 
-    if not available_heights:
-        available_heights = {144, 240, 360, 480, 720, 1080, 1440, 2160}
-        
-    return available_heights
 
 # ==========================================
 # 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
@@ -248,26 +209,22 @@ async def progress_bar(current, total, msg, title, header, start_time):
             EDIT_TIME[msg.id] = time.time()
 
 # ==========================================
-# 🌟 QUALITY BUTTONS GENERATOR 🌟
+# 🌟 ALWAYS UNLOCKED QUALITY BUTTONS 🌟
 # ==========================================
 async def show_quality_buttons(client, message, url, yt_id, user_id, header, edit_msg=None):
-    proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Checking available qualities...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
+    proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Fetching Details...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
     
     title, _ = get_yt_metadata(yt_id)
-    proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    get_working_cookie_file(0) 
-    
-    available_h = await asyncio.to_thread(get_available_formats, url, proxy)
-    
-    btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if any(h >= 2160 for h in available_h) else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
-    btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}") if any(h >= 1440 for h in available_h) else InlineKeyboardButton("🔒 2K (Mini HD)", callback_data="locked_quality")
-    btn_1080 = InlineKeyboardButton("🖥 1080p (Full HD)", callback_data=f"dl|1080p|{yt_id}") if any(h >= 1080 for h in available_h) else InlineKeyboardButton("🔒 1080p (Full HD)", callback_data="locked_quality")
-    btn_720 = InlineKeyboardButton("💻 720p (HD)", callback_data=f"dl|720p|{yt_id}") if any(h >= 720 for h in available_h) else InlineKeyboardButton("🔒 720p (HD)", callback_data="locked_quality")
-    btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if any(h >= 480 for h in available_h) else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
-    btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if any(h >= 360 for h in available_h) else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
-    btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if any(h >= 240 for h in available_h) else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
-    btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if any(h >= 144 for h in available_h) else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
+    # 🌟 YouTube మోసాలను అడ్డుకోవడానికి అన్ని బటన్స్ ని శాశ్వతంగా అన్‌లాక్ చేశాను! 🌟
+    btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}")
+    btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}")
+    btn_1080 = InlineKeyboardButton("🖥 1080p (Full HD)", callback_data=f"dl|1080p|{yt_id}")
+    btn_720 = InlineKeyboardButton("💻 720p (HD)", callback_data=f"dl|720p|{yt_id}")
+    btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}")
+    btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}")
+    btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}")
+    btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}")
     
     buttons = [
         [btn_4k, btn_2k],
@@ -280,11 +237,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     text = f"{header}🎬 📹 <b>{title}</b>\n\n👇 <b>Select Quality:</b>"
     keyboard = InlineKeyboardMarkup(buttons)
     await safe_edit_text(proc_msg, text, reply_markup=keyboard)
-
-@Client.on_callback_query(filters.regex(r"^locked_quality$"))
-async def locked_quality_alert(client, callback_query):
-    alert_text = "🚫 OOPS! Sorry!\n\nThe requested quality is NOT available for this specific YouTube link. 😔\n\n👉 Please select an unlocked quality from the menu! 🎥"
-    await callback_query.answer(alert_text, show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^dl\|(.*)\|(.*)$"))
 async def handle_quality_click(client, callback_query):
@@ -356,7 +308,6 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
-        # 🌟 ఐదు కుకీస్ పక్కాగా తిరిగే లూప్ 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
             try:
@@ -372,7 +323,7 @@ async def start_download_process(client, event, quality, url):
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
-            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
+            log_bot_problem(f"Download Failed (All 5 cookies exhausted). Final Error: {last_error}", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
             return
