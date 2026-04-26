@@ -52,35 +52,64 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 సర్వర్ క్రాష్ అవ్వకుండా కాపాడే సేఫ్టీ కవచం 🌟
 class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
     def error(self, msg):
         raise Exception(msg)
 
-def get_available_formats(url, proxy=None):
-    opts = {
-        'quiet': True, 'no_warnings': True, 'cookiefile': 'cookies.txt',
-        'nocheckcertificate': True, 'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}}, 
-        'logger': MyLogger() 
-    }
-    if proxy and proxy.lower() != "none": opts['proxy'] = proxy
+# 🌟 ప్యాకేజీలు అన్నింటినీ అడిగి, రియల్ హైయెస్ట్ క్వాలిటీ తెలుసుకునే ఫంక్షన్ 🌟
+def get_highest_available_format(url, proxy=None):
     available_heights = set()
+    
+    # 1. Ask yt-dlp
     try:
+        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
+        if proxy and proxy.lower() != "none": opts['proxy'] = proxy
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            formats = info.get('formats', [])
-            for f in formats:
+            for f in info.get('formats', []):
                 h = f.get('height')
                 if h and isinstance(h, int): available_heights.add(h)
     except Exception:
         pass
-    return available_heights
+
+    # 2. Ask PyTubeFix
+    try:
+        yt = PyTubeFixDL(url)
+        for s in yt.streams.filter(type="video"):
+            if s.resolution:
+                res = int(s.resolution.replace('p', ''))
+                available_heights.add(res)
+    except Exception:
+        pass
+
+    # 3. Ask PyTube
+    try:
+        yt = PyTubeDL(url)
+        for s in yt.streams.filter(type="video"):
+            if s.resolution:
+                res = int(s.resolution.replace('p', ''))
+                available_heights.add(res)
+    except Exception:
+        pass
+
+    # 4. Ask youtube-dl
+    try:
+        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True}
+        if proxy and proxy.lower() != "none": opts['proxy'] = proxy
+        with youtube_dl.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            for f in info.get('formats', []):
+                h = f.get('height')
+                if h and isinstance(h, int): available_heights.add(h)
+    except Exception:
+        pass
+
+    return max(available_heights) if available_heights else 0
 
 # ==========================================
-# 🌟 6-LAYER MASTER DOWNLOAER (With Quality Fallback) 🌟
+# 🌟 "వెనకాల ఉన్న క్వాలిటీకి వెళ్ళే" MASTER DOWNLOADER 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -89,14 +118,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     req_res = res_map.get(quality, 720)
     
-    # 🌟 మీరు చెప్పిన "ఒక క్వాలిటీ దొరక్కపోతే వెనకాల ఉన్న దానికి వెళ్ళే" లాజిక్ 🌟
+    # యూజర్ అడిగిన క్వాలిటీ లేకపోతే.. వెనకాల ఉన్న క్వాలిటీకి (360p వరకే) వెళ్లే లిస్ట్
     res_list = []
     if quality == "audio":
         res_list = [0]
     elif quality in ["144p", "240p"]:
-        res_list = [req_res] # యూజర్ 144/240 అడిగితే అదే ట్రై చేస్తుంది
+        res_list = [req_res] # యూజర్ డైరెక్ట్ గా అడిగితేనే వీటిని ట్రై చేస్తుంది
     else:
-        # 4K అడిగితే [2160, 1440, 1080, 720, 480, 360] ఇలా 360p వరకు ఆర్డర్ లో వెతుకుతుంది
         all_res = [2160, 1440, 1080, 720, 480, 360]
         res_list = [r for r in all_res if r <= req_res]
 
@@ -104,6 +132,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     download_success = False
     last_error = ""
 
+    # ప్రతి క్వాలిటీకి (ఒకటి ఫెయిల్ అయితే వెనకాల దానికి వెళ్ళడానికి లూప్)
     for current_res in res_list:
         if download_success: break
         
@@ -123,7 +152,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     dl_h = info.get('height', 0)
-                    # దొంగతనంగా తక్కువ క్వాలిటీ ఇస్తే రిజెక్ట్ చేస్తుంది
                     if current_res >= 480 and 0 < dl_h < (current_res - 100):
                         raise Exception(f"Shadowban: Got {dl_h}p instead of {current_res}p")
                     fname = ydl.prepare_filename(info)
@@ -137,7 +165,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 
         if download_success: break
 
-        # 🌟 LAYER 2: YT-DLP (Spoofed Android/TV/iOS, 5 Cookies) 🌟
+        # 🌟 LAYER 2: YT-DLP (Spoofed Android/TV/iOS/Web, 5 Cookies) 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt)
             opts = {
@@ -209,13 +237,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             
         if download_success: break
             
-        # 🌟 LAYER 5: youtube-dl (దీని వల్లే క్రాష్ అయింది, ఇప్పుడు MyLogger తో పక్కాగా సెట్ చేశాను) 🌟
+        # 🌟 LAYER 5: youtube-dl 🌟
         try:
             ydl_opts = {
                 'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
                 'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
                 'format': format_str, 'merge_output_format': 'mp4',
-                'logger': MyLogger() # 🌟 సర్వర్ క్రాష్ అవ్వకుండా ఆపుతుంది 🌟
+                'logger': MyLogger() 
             }
             if current_res == 0: ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
             if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
@@ -233,7 +261,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             
         if download_success: break
 
-    # ఏ క్వాలిటీ (360p వరకు) ఏ ప్యాకేజీలో దొరకకపోతే.. అప్పుడు అల్టిమేట్ ఫాల్‌బ్యాక్ కి వెళ్తుంది!
+    # అన్నీ ఫెయిల్ అయితే అప్పుడు ఫాల్‌బ్యాక్ కమాండ్ ఇస్తుంది!
     if not download_success:
         raise Exception(last_error)
 
@@ -291,29 +319,29 @@ async def progress_bar(current, total, msg, title, header, start_time):
             EDIT_TIME[msg.id] = time.time()
 
 # ==========================================
-# 🌟 QUALITY BUTTONS GENERATOR 🌟
+# 🌟 QUALITY BUTTONS GENERATOR (ALL PACKAGES CHECK) 🌟
 # ==========================================
 async def show_quality_buttons(client, message, url, yt_id, user_id, header, edit_msg=None):
-    proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Checking available qualities...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
+    proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Fetching Details...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
     
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    get_working_cookie_file(0) 
-    available_h = await asyncio.to_thread(get_available_formats, url, proxy)
+    # 🌟 మీరు అడిగినట్లు అన్ని ప్యాకేజీలను వెతికి హైయెస్ట్ తెస్తుంది 🌟
+    max_h = await asyncio.to_thread(get_highest_available_format, url, proxy)
     
-    if not available_h or max(available_h) <= 480:
-        available_h = {144, 240, 360, 480, 720, 1080, 1440, 2160}
+    # ఏ ప్యాకేజీ పని చేయకపోయినా డీఫాల్ట్ గా 1080p ఇస్తుంది (యూజర్ బ్లాక్ అవ్వకుండా)
+    if max_h == 0: max_h = 1080
     
-    btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if any(h >= 2160 for h in available_h) else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
-    btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}") if any(h >= 1440 for h in available_h) else InlineKeyboardButton("🔒 2K (Mini HD)", callback_data="locked_quality")
-    btn_1080 = InlineKeyboardButton("🖥 1080p (Full HD)", callback_data=f"dl|1080p|{yt_id}") if any(h >= 1080 for h in available_h) else InlineKeyboardButton("🔒 1080p (Full HD)", callback_data="locked_quality")
-    btn_720 = InlineKeyboardButton("💻 720p (HD)", callback_data=f"dl|720p|{yt_id}") if any(h >= 720 for h in available_h) else InlineKeyboardButton("🔒 720p (HD)", callback_data="locked_quality")
-    btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if any(h >= 480 for h in available_h) else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
-    btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if any(h >= 360 for h in available_h) else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
+    btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if max_h >= 2160 else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
+    btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}") if max_h >= 1440 else InlineKeyboardButton("🔒 2K (Mini HD)", callback_data="locked_quality")
+    btn_1080 = InlineKeyboardButton("🖥 1080p (Full HD)", callback_data=f"dl|1080p|{yt_id}") if max_h >= 1080 else InlineKeyboardButton("🔒 1080p (Full HD)", callback_data="locked_quality")
+    btn_720 = InlineKeyboardButton("💻 720p (HD)", callback_data=f"dl|720p|{yt_id}") if max_h >= 720 else InlineKeyboardButton("🔒 720p (HD)", callback_data="locked_quality")
+    btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if max_h >= 480 else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
+    btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if max_h >= 360 else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
     
-    btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if any(h >= 240 for h in available_h) else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
-    btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if any(h >= 144 for h in available_h) else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
+    btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if max_h >= 240 else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
+    btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if max_h >= 144 else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
 
     buttons = [
         [btn_4k, btn_2k],
@@ -412,7 +440,7 @@ async def start_download_process(client, event, quality, url):
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
-            log_bot_problem(f"Download Failed (All Qualities & Layers exhausted). Final Error: {last_error}", "engine.py")
+            log_bot_problem(f"Download Failed (All Layers exhausted). Final Error: {last_error}", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
             return
