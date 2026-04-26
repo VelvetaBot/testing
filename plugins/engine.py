@@ -55,13 +55,13 @@ def get_yt_metadata(yt_id):
         return "YouTube Video", None
 
 def get_available_formats(url, proxy=None):
+    # 🌟 ఇక్కడ ఆండ్రాయిడ్ బైపాస్ తీసేశాను, కాబట్టి ఇప్పుడు అన్ని 4K, 1080p క్వాలిటీలు కనిపిస్తాయి 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 Android Bypass for checking formats 🌟
+        'skip_download': True
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -80,7 +80,7 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER (With Android Bypass) 🌟
+# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -95,8 +95,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 YOUTUBE BOT DETECTION BYPASS 🌟
+        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s'
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -120,7 +119,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         
         # --- ATTEMPT 2: PyTubeFix ---
         try:
-            yt = PyTubeFixDL(url, use_po_token=True) # 🌟 Po-Token Bypass for PyTubeFix 🌟
+            yt = PyTubeFixDL(url, use_po_token=True)
             if quality == "audio":
                 stream = yt.streams.get_audio_only()
                 fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
@@ -152,8 +151,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 try:
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
-                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
-                        'extractor_args': {'youtube': {'player_client': ['android', 'web']}} # 🌟 Bypass 🌟
+                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s'
                     }
                     if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
                     
@@ -345,7 +343,6 @@ async def start_download_process(client, event, quality, url):
                 continue
 
         if not download_success:
-            # 🌟 Circular Import ని అవాయిడ్ చేయడానికి ఇక్కడ ఫంక్షన్స్ పిలుస్తున్నాం 🌟
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
@@ -388,7 +385,6 @@ async def start_download_process(client, event, quality, url):
             os.remove(final_thumb)
 
     except Exception as e:
-        # 🌟 ఇక్కడ కూడా Circular Import లేకుండా జాగ్రత్త పడ్డాం 🌟
         from plugins.admin import log_bot_problem
         log_bot_problem(str(e), "engine.py - Upload Stage")
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
