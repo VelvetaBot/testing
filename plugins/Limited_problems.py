@@ -1,7 +1,7 @@
 import re
 import requests
 from pyrogram import Client, filters, enums
-from pyrogram.exceptions import StopPropagation
+from pyrogram import StopPropagation
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import users_db
 import config
