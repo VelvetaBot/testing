@@ -55,13 +55,14 @@ def get_yt_metadata(yt_id):
         return "YouTube Video", None
 
 def get_available_formats(url, proxy=None):
-    # 🌟 ఇక్కడ ఆండ్రాయిడ్ బైపాస్ తీసేశాను, కాబట్టి ఇప్పుడు అన్ని 4K, 1080p క్వాలిటీలు కనిపిస్తాయి 🌟
+    # 🌟 Smart TV Spoofing: 4K క్వాలిటీ అన్‌లాక్ అవ్వడానికి మరియు Bot బైపాస్ కోసం 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'skip_download': True
+        'skip_download': True,
+        'extractor_args': {'youtube': {'player_client': ['tv', 'web']}} 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -89,13 +90,14 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
-    # --- ATTEMPT 1: YT-DLP ---
+    # --- ATTEMPT 1: YT-DLP (with TV Bypass) ---
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
-        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s'
+        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
+        'extractor_args': {'youtube': {'player_client': ['tv', 'web']}} # 🌟 Smart TV Bypass 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -119,7 +121,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         
         # --- ATTEMPT 2: PyTubeFix ---
         try:
-            yt = PyTubeFixDL(url, use_po_token=True)
+            yt = PyTubeFixDL(url)
             if quality == "audio":
                 stream = yt.streams.get_audio_only()
                 fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
@@ -151,7 +153,8 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 try:
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
-                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s'
+                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
+                        'extractor_args': {'youtube': {'player_client': ['tv', 'web']}} # 🌟 Smart TV Bypass 🌟
                     }
                     if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
                     
