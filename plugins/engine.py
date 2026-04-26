@@ -394,3 +394,4 @@ async def text_handler(client, message):
     yt_id = extract_yt_id(message.text)
     if yt_id:
         await show_quality_buttons(client, message, message.text, yt_id, message.from_user.id, get_header(message.from_user.id))
+
