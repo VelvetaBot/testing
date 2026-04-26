@@ -4,9 +4,6 @@ import time
 import asyncio
 import requests
 import yt_dlp
-import youtube_dl 
-from pytubefix import YouTube as PyTubeFixDL 
-from pytube import YouTube as PyTubeDL 
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, MessageNotModified
@@ -14,11 +11,13 @@ from database import users_db
 import config
 from datetime import datetime
 
+# కుకీస్ ఫైల్ కి ఇంజిన్ తో పని లేదు కాబట్టి దీన్ని పైన ఉంచవచ్చు
 from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
+# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
@@ -52,22 +51,15 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 YT-DLP క్రాష్ అవ్వకుండా ఆపడానికి కస్టమ్ లాగర్ 🌟
-class MyLogger(object):
-    def debug(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg):
-        raise Exception(msg)
-
 def get_available_formats(url, proxy=None):
+    # 🌟 MASTER ROTATION: iOS -> Android -> TV -> Web 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
-        'logger': MyLogger() 
+        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'tv', 'web']}} 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -86,7 +78,7 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
+# 🌟 STRICT DOWNLOADER (No more low quality fake downloads) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -95,15 +87,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
-    # --- ATTEMPT 1: YT-DLP ---
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}}, 
-        'logger': MyLogger() 
+        'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'tv', 'web']}} 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -115,71 +105,12 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best'
         opts['merge_output_format'] = 'mp4'
     
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            fname = ydl.prepare_filename(info)
-            if quality == "audio" and not fname.endswith('.mp3'):
-                fname = fname.rsplit('.', 1)[0] + '.mp3'
-            return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
-    except Exception as e1:
-        print(f"YT-DLP Failed: {e1}")
-        
-        # --- ATTEMPT 2: PyTubeFix (Removed use_po_token to stop console prompts) ---
-        try:
-            yt = PyTubeFixDL(url) # 🌟 ఇక్కడ ఆ జామ్ చేసే ట్రిక్ ని తీసేశాను 🌟
-            if quality == "audio":
-                stream = yt.streams.get_audio_only()
-                fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
-                return fname, 0, 0, yt.length
-            else:
-                stream = yt.streams.filter(res=f"{target_res}p", file_extension='mp4').first()
-                if not stream: stream = yt.streams.get_highest_resolution()
-                fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                return fname, 1280, 720, yt.length
-        except Exception as e2:
-            print(f"PyTubeFix Failed: {e2}")
-            
-            # --- ATTEMPT 3: PyTube ---
-            try:
-                yt = PyTubeDL(url)
-                if quality == "audio":
-                    stream = yt.streams.get_audio_only()
-                    fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pt.mp3")
-                    return fname, 0, 0, yt.length
-                else:
-                    stream = yt.streams.filter(res=f"{target_res}p", file_extension='mp4').first()
-                    if not stream: stream = yt.streams.get_highest_resolution()
-                    fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-                    return fname, 1280, 720, yt.length
-            except Exception as e3:
-                print(f"PyTube Failed: {e3}")
-                
-                # --- ATTEMPT 4: Youtube-dl ---
-                try:
-                    ydl_opts = {
-                        'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
-                        'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
-                        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
-                        'logger': MyLogger()
-                    }
-                    if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
-                    
-                    if quality == "audio":
-                        ydl_opts['format'] = 'bestaudio/best'
-                        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
-                    else:
-                        ydl_opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/best'
-                        ydl_opts['merge_output_format'] = 'mp4'
-
-                    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(url, download=True)
-                        fname = ydl.prepare_filename(info)
-                        if quality == "audio" and not fname.endswith('.mp3'):
-                            fname = fname.rsplit('.', 1)[0] + '.mp3'
-                        return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
-                except Exception as e4:
-                    raise Exception(f"Ultimate Failure! All 4 Packages crashed. 1:{e1} | 2:{e2} | 3:{e3} | 4:{e4}")
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        fname = ydl.prepare_filename(info)
+        if quality == "audio" and not fname.endswith('.mp3'):
+            fname = fname.rsplit('.', 1)[0] + '.mp3'
+        return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -341,6 +272,7 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
+        # 🌟 5 COOKIES ROTATION 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
             try:
@@ -349,14 +281,15 @@ async def start_download_process(client, event, quality, url):
                 break
             except Exception as e:
                 last_error = str(e)
-                print(f"Cookie/Package Loop Attempt {attempt+1} Failed: {e}")
+                print(f"Cookie Loop Attempt {attempt+1} Failed: {e}")
                 continue
 
         if not download_success:
+            # 🌟 5 కుకీస్ ఫెయిల్ అయితే పక్కాగా మీ fallback.py కి వెళ్తుంది! 🌟
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
-            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
+            log_bot_problem(f"Download Failed (All 5 cookies exhausted). Final Error: {last_error}", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
             return
