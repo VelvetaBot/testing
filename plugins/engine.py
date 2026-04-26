@@ -55,14 +55,14 @@ def get_yt_metadata(yt_id):
         return "YouTube Video", None
 
 def get_available_formats(url, proxy=None):
-    # 🌟 ఫార్మాట్స్ చెక్ చేసేటప్పుడు టీవీ, ఆండ్రాయిడ్, వెబ్ మూడింటినీ ఒకేసారి అడుగుతుంది! 🌟
+    # 🌟 MASTER ROTATION: TV -> iOS -> Android -> Web (తాళాలు కరెక్ట్ గా పడటానికి) 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'android', 'web']}} 
+        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -81,26 +81,23 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER (With Client Rotation) 🌟
+# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
 # ==========================================
-def download_media_with_fallback(url, quality, yt_id, proxy=None, current_client=None):
-    if not current_client:
-        current_client = ['tv', 'web']
-        
+def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
     
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     
-    # --- ATTEMPT 1: YT-DLP (Dynamic Client) ---
+    # --- ATTEMPT 1: YT-DLP ---
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'extractor_args': {'youtube': {'player_client': current_client}} # 🌟 ఇక్కడ ఆటోమేటిక్ గా డివైజ్ మారుతుంది 🌟
+        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} # 🌟 MASTER ROTATION BYPASS 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -120,7 +117,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None, current_client
                 fname = fname.rsplit('.', 1)[0] + '.mp3'
             return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
     except Exception as e1:
-        print(f"YT-DLP Failed with client {current_client[0]}: {e1}")
+        print(f"YT-DLP Failed: {e1}")
         
         # --- ATTEMPT 2: PyTubeFix ---
         try:
@@ -157,7 +154,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None, current_client
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
                         'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
-                        'extractor_args': {'youtube': {'player_client': current_client}}
+                        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} # 🌟 MASTER ROTATION BYPASS 🌟
                     }
                     if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
                     
@@ -337,27 +334,15 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
-        # 🌟 ఇక్కడ మీరు చెప్పిన అల్టిమేట్ డివైజ్ రొటేషన్ యాడ్ చేశాను 🌟
-        client_rotations = [
-            ['tv', 'web'],          # Attempt 1: Smart TV (Best for 4K)
-            ['android', 'web'],     # Attempt 2: Android Phone 
-            ['ios', 'web'],         # Attempt 3: iPhone (iOS)
-            ['mweb', 'web'],        # Attempt 4: Mobile Browser
-            ['web_safari', 'web']   # Attempt 5: Safari Browser
-        ]
-
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
-            current_client = client_rotations[attempt]
             try:
-                file_path, v_width, v_height, v_duration = await asyncio.to_thread(
-                    download_media_with_fallback, url, quality, yt_id, proxy, current_client
-                )
+                file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
                 download_success = True
                 break
             except Exception as e:
                 last_error = str(e)
-                print(f"Cookie/Client Loop Attempt {attempt+1} (Client: {current_client[0]}) Failed: {e}")
+                print(f"Cookie/Package Loop Attempt {attempt+1} Failed: {e}")
                 continue
 
         if not download_success:
