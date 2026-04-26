@@ -4,7 +4,6 @@ import time
 import asyncio
 import requests
 import yt_dlp
-from pytube import YouTube as PyTubeDL 
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, MessageNotModified
@@ -56,7 +55,6 @@ class MyLogger(object):
     def error(self, msg):
         raise Exception(msg)
 
-# 🌟 YouTube ఏ క్వాలిటీ ఉంటే అదే పక్కాగా చెప్పడానికి 🌟
 def get_available_formats(url, proxy=None):
     opts = {
         'quiet': True,
@@ -64,7 +62,7 @@ def get_available_formats(url, proxy=None):
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'ios', 'android']}}, # TV ముందు పెట్టాం కాబట్టి 4K దాచదు!
+        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'ios', 'android']}}, 
         'logger': MyLogger() 
     }
     if proxy and proxy.lower() != "none":
@@ -86,65 +84,95 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 4-LAYER MULTI-PACKAGE DOWNLOADER 🌟
+# 🌟 MASTER FALLBACK FUNCTION (For Engine & Playlist Repair) 🌟
 # ==========================================
-def download_media_with_yt_dlp(url, quality, yt_id, proxy, cookie_file, use_clients):
+def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
         
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
     target_res = res_map.get(quality, 720)
-    
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'cookiefile': cookie_file,
-        'nocheckcertificate': True,
-        'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'logger': MyLogger() 
-    }
-    
-    if use_clients:
-        opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}}
-        
-    if proxy and proxy.lower() != "none":
-        opts['proxy'] = proxy
+    last_error = ""
 
-    if quality == "audio":
-        opts['format'] = 'bestaudio/best'
-        opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
-    else:
-        opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best'
-        opts['merge_output_format'] = 'mp4'
-    
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        
-        # 🌟 SHADOWBAN DETECTOR 🌟 (4K అడిగితే 360p ఇస్తే అడ్డుకుని ఫాల్‌బ్యాక్ కి పంపుతుంది)
-        if quality != "audio" and target_res >= 480:
-            downloaded_h = info.get('height', 0)
-            if downloaded_h > 0 and downloaded_h <= 360:
-                raise Exception(f"Shadowban Detected: Requested {target_res}p but YouTube gave {downloaded_h}p")
+    # 🌟 LAYER 1: Normal yt-dlp (5 Cookies) 🌟
+    for attempt in range(5):
+        cookie_file = get_working_cookie_file(attempt)
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'nocheckcertificate': True,
+            'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
+            'logger': MyLogger()
+        }
+        if proxy and proxy.lower() != "none": opts['proxy'] = proxy
+        if quality == "audio":
+            opts['format'] = 'bestaudio/best'
+            opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+        else:
+            opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best'
+            opts['merge_output_format'] = 'mp4'
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
                 
-        fname = ydl.prepare_filename(info)
-        if quality == "audio" and not fname.endswith('.mp3'):
-            fname = fname.rsplit('.', 1)[0] + '.mp3'
-        return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
+                # 🌟 SHADOWBAN DETECTOR 🌟
+                if quality != "audio" and target_res >= 480:
+                    dl_h = info.get('height', 0)
+                    if 0 < dl_h <= 360:
+                        raise Exception(f"Shadowban Detected: Requested {target_res}p but YouTube gave {dl_h}p")
+                        
+                fname = ydl.prepare_filename(info)
+                if quality == "audio" and not fname.endswith('.mp3'):
+                    fname = fname.rsplit('.', 1)[0] + '.mp3'
+                return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
+        except Exception as e:
+            last_error = str(e)
+            print(f"Layer 1 Attempt {attempt+1} Failed: {e}")
+            continue
 
-def download_media_with_pytube(url, quality, yt_id, proxy):
-    res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
-    target_res = res_map.get(quality, 720)
-    yt = PyTubeDL(url)
-    if quality == "audio":
-        stream = yt.streams.get_audio_only()
-        fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pt.mp3")
-        return fname, 0, 0, yt.length
-    else:
-        stream = yt.streams.filter(res=f"{target_res}p", file_extension='mp4').first()
-        if not stream:
-            stream = yt.streams.get_highest_resolution()
-        fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-        return fname, 1280, 720, yt.length
+    # 🌟 LAYER 2: Spoofed yt-dlp (5 Cookies) 🌟
+    for attempt in range(5):
+        cookie_file = get_working_cookie_file(attempt)
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_file,
+            'nocheckcertificate': True,
+            'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
+            'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}},
+            'logger': MyLogger()
+        }
+        if proxy and proxy.lower() != "none": opts['proxy'] = proxy
+        if quality == "audio":
+            opts['format'] = 'bestaudio/best'
+            opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+        else:
+            opts['format'] = f'bestvideo[height<={target_res}]+bestaudio/bestvideo[width<={target_res}]+bestaudio/best'
+            opts['merge_output_format'] = 'mp4'
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                
+                # 🌟 SHADOWBAN DETECTOR 🌟
+                if quality != "audio" and target_res >= 480:
+                    dl_h = info.get('height', 0)
+                    if 0 < dl_h <= 360:
+                        raise Exception(f"Shadowban Detected: Requested {target_res}p but YouTube gave {dl_h}p")
+                        
+                fname = ydl.prepare_filename(info)
+                if quality == "audio" and not fname.endswith('.mp3'):
+                    fname = fname.rsplit('.', 1)[0] + '.mp3'
+                return fname, info.get('width', 0), info.get('height', 0), info.get('duration', 0)
+        except Exception as e:
+            last_error = str(e)
+            print(f"Layer 2 Attempt {attempt+1} Failed: {e}")
+            continue
+
+    # ఏ కుకీ/లేయర్ పనిచేయకపోతే ఫాల్‌బ్యాక్ ట్రిగ్గర్ అవ్వడానికి ఈ ఎర్రర్ ఇస్తుంది
+    raise Exception(last_error)
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -208,10 +236,8 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     
     get_working_cookie_file(0) 
     
-    # 🌟 డైనమిక్ గా క్వాలిటీలు లాగుతుంది 🌟
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
-    # ఎర్రర్ వచ్చి ఏవీ దొరకకపోతే.. కనీసం 360, 480, 720, 1080 ఇస్తుంది
     if not available_h:
         available_h = {360, 480, 720, 1080}
     
@@ -222,7 +248,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if any(h >= 480 for h in available_h) else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
     btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if any(h >= 360 for h in available_h) else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
     
-    # ❌ 144p మరియు 240p బటన్స్ ని పీకేశాను ❌
     buttons = [
         [btn_4k, btn_2k],
         [btn_1080, btn_720],
@@ -293,42 +318,12 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
-        # 🌟 LAYER 1: Normal yt-dlp (5 Cookies) 🌟
-        if not download_success:
-            for attempt in range(5):
-                cookie_file = get_working_cookie_file(attempt) 
-                try:
-                    file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_yt_dlp, url, quality, yt_id, proxy, cookie_file, use_clients=False)
-                    download_success = True
-                    break
-                except Exception as e:
-                    last_error = str(e)
-                    print(f"Layer 1 (Normal) Attempt {attempt+1} Failed: {e}")
-                    continue
+        try:
+            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+            download_success = True
+        except Exception as e:
+            last_error = str(e)
 
-        # 🌟 LAYER 2: Spoofed yt-dlp (5 Cookies) 🌟
-        if not download_success:
-            for attempt in range(5):
-                cookie_file = get_working_cookie_file(attempt) 
-                try:
-                    file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_yt_dlp, url, quality, yt_id, proxy, cookie_file, use_clients=True)
-                    download_success = True
-                    break
-                except Exception as e:
-                    last_error = str(e)
-                    print(f"Layer 2 (Spoof) Attempt {attempt+1} Failed: {e}")
-                    continue
-
-        # 🌟 LAYER 3: PyTube Fallback 🌟
-        if not download_success:
-            try:
-                file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_pytube, url, quality, yt_id, proxy)
-                download_success = True
-            except Exception as e:
-                last_error = str(e)
-                print(f"Layer 3 (PyTube) Failed: {e}")
-
-        # 🌟 LAYER 4: Ultimate Fallback (fallback.py) 🌟
         if not download_success:
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
