@@ -54,15 +54,24 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
+# 🌟 YT-DLP క్రాష్ అవ్వకుండా ఆపడానికి కస్టమ్ లాగర్ 🌟
+class MyLogger(object):
+    def debug(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg):
+        # ఎర్రర్ వస్తే బలవంతంగా క్రాష్ చేసి ఫాల్‌బ్యాక్ కి పంపుతుంది
+        raise Exception(msg)
+
 def get_available_formats(url, proxy=None):
-    # 🌟 MASTER ROTATION: TV -> iOS -> Android -> Web (తాళాలు కరెక్ట్ గా పడటానికి) 🌟
+    # 🌟 Master Client Rotation 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} 
+        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
+        'logger': MyLogger() # 🌟 క్రాష్ ఆపడానికి 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -97,7 +106,8 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} # 🌟 MASTER ROTATION BYPASS 🌟
+        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}}, # 🌟 Master Rotation 🌟
+        'logger': MyLogger() # 🌟 ఇక్కడే లూప్ బ్రేక్ అవ్వకుండా కాపాడేది 🌟
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -154,7 +164,8 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     ydl_opts = {
                         'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
                         'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
-                        'extractor_args': {'youtube': {'player_client': ['tv', 'ios', 'android', 'web']}} # 🌟 MASTER ROTATION BYPASS 🌟
+                        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
+                        'logger': MyLogger()
                     }
                     if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
                     
@@ -334,6 +345,7 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
+        # 🌟 ఇక్కడే మీ ఫాల్‌బ్యాక్ లూప్ పక్కాగా తిరుగుతుంది 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
             try:
@@ -346,6 +358,7 @@ async def start_download_process(client, event, quality, url):
                 continue
 
         if not download_success:
+            # 🌟 5 కుకీస్ ఫెయిల్ అయితే పక్కాగా fallback.py కి వెళ్తుంది 🌟
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
