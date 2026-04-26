@@ -55,6 +55,7 @@ class MyLogger(object):
     def error(self, msg):
         raise Exception(msg)
 
+# 🌟 YouTube ఏ క్వాలిటీ ఉంటే అదే పక్కాగా చెప్పడానికి (కుకీస్ లేకుండా టీవీ/వెబ్ ట్రిక్ వాడతాం) 🌟
 def get_available_formats(url, proxy=None):
     opts = {
         'quiet': True,
@@ -62,7 +63,7 @@ def get_available_formats(url, proxy=None):
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
-        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'ios', 'android']}}, 
+        'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}}, 
         'logger': MyLogger() 
     }
     if proxy and proxy.lower() != "none":
@@ -84,13 +85,13 @@ def get_available_formats(url, proxy=None):
     return available_heights
 
 # ==========================================
-# 🌟 MASTER FALLBACK FUNCTION (For Engine & Playlist Repair) 🌟
+# 🌟 2-LAYER MULTI-PACKAGE DOWNLOADER (Then directly to Fallback) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
         
-    res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360}
+    res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     target_res = res_map.get(quality, 720)
     last_error = ""
 
@@ -132,7 +133,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             print(f"Layer 1 Attempt {attempt+1} Failed: {e}")
             continue
 
-    # 🌟 LAYER 2: Spoofed yt-dlp (5 Cookies) 🌟
+    # 🌟 LAYER 2: Spoofed yt-dlp (5 Cookies with TV, Android, Web bypass) 🌟
     for attempt in range(5):
         cookie_file = get_working_cookie_file(attempt)
         opts = {
@@ -171,7 +172,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             print(f"Layer 2 Attempt {attempt+1} Failed: {e}")
             continue
 
-    # ఏ కుకీ/లేయర్ పనిచేయకపోతే ఫాల్‌బ్యాక్ ట్రిగ్గర్ అవ్వడానికి ఈ ఎర్రర్ ఇస్తుంది
+    # రెండు లేయర్లు ఫెయిల్ అయితే, డైరెక్ట్ గా ఫాల్‌బ్యాక్ కి వెళ్ళడానికి ఎర్రర్ విసురుతుంది
     raise Exception(last_error)
 
 def format_bytes(size):
@@ -226,7 +227,7 @@ async def progress_bar(current, total, msg, title, header, start_time):
             EDIT_TIME[msg.id] = time.time()
 
 # ==========================================
-# 🌟 QUALITY BUTTONS GENERATOR (144p, 240p Removed) 🌟
+# 🌟 QUALITY BUTTONS GENERATOR (అన్ని బటన్స్ ఉంటాయి) 🌟
 # ==========================================
 async def show_quality_buttons(client, message, url, yt_id, user_id, header, edit_msg=None):
     proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Checking available qualities...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
@@ -236,10 +237,11 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     
     get_working_cookie_file(0) 
     
+    # 🌟 దొరికితే రియల్ క్వాలిటీ ఇస్తుంది, లేకపోతే డీఫాల్ట్ క్వాలిటీలతో బటన్స్ ఇస్తుంది 🌟
     available_h = await asyncio.to_thread(get_available_formats, url, proxy)
     
     if not available_h:
-        available_h = {360, 480, 720, 1080}
+        available_h = {144, 240, 360, 480, 720, 1080}
     
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if any(h >= 2160 for h in available_h) else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
     btn_2k = InlineKeyboardButton("🌟 2K (Mini Ultra HD)", callback_data=f"dl|2k|{yt_id}") if any(h >= 1440 for h in available_h) else InlineKeyboardButton("🔒 2K (Mini HD)", callback_data="locked_quality")
@@ -248,10 +250,15 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if any(h >= 480 for h in available_h) else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
     btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if any(h >= 360 for h in available_h) else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
     
+    # 🌟 144p, 240p బటన్స్ తిరిగి వచ్చాయి 🌟
+    btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if any(h >= 240 for h in available_h) else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
+    btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if any(h >= 144 for h in available_h) else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
+
     buttons = [
         [btn_4k, btn_2k],
         [btn_1080, btn_720],
         [btn_480, btn_360],
+        [btn_240, btn_144],
         [InlineKeyboardButton("🎵 Audio Only (MP3)", callback_data=f"start_dl|audio|{yt_id}")]
     ]
 
@@ -267,7 +274,24 @@ async def locked_quality_alert(client, callback_query):
 @Client.on_callback_query(filters.regex(r"^dl\|(.*)\|(.*)$"))
 async def handle_quality_click(client, callback_query):
     _, quality, yt_id = callback_query.data.split("|")
-    await start_download_process(client, callback_query, quality, f"https://youtu.be/{yt_id}")
+    user_id = callback_query.from_user.id
+    header = get_header(user_id)
+    
+    # 🌟 144p కి మీరు అడిగిన అలర్ట్ మెసేజ్ పక్కాగా తిరిగి తెచ్చాను 🌟
+    if quality == "144p":
+        text = (
+            f"{header}⚠️ <b>Confirmation Required!</b>\n\n"
+            "👀 Note: 144p quality is very low and might be blurry 😵‍💫.\n"
+            "This is only recommended for saving data 📉.\n\n"
+            "🤔 Do you want to proceed?"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("☑️ Yes, Sure", callback_data=f"start_dl|144p|{yt_id}")],
+            [InlineKeyboardButton("🔙 Back", callback_data=f"back_to_q|{yt_id}")]
+        ])
+        await safe_edit_text(callback_query.message, text, reply_markup=keyboard)
+    else:
+        await start_download_process(client, callback_query, quality, f"https://youtu.be/{yt_id}")
 
 @Client.on_callback_query(filters.regex(r"^back_to_q\|(.*)$"))
 async def back_to_qualities(client, callback_query):
