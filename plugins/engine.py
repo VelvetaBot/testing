@@ -17,7 +17,6 @@ from datetime import datetime
 from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
-SCHEDULER_STARTED = False
 
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
@@ -30,17 +29,16 @@ def extract_yt_id(text):
     match = re.search(r"(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})", text)
     return match.group(2) if match else None
 
+# థంబ్‌నెయిల్స్ లాంటి బేసిక్ డేటా కోసం మాత్రమే YouTube API వాడతాం
 def get_yt_metadata(yt_id):
     try:
         api_key = getattr(config.Config, "YOUTUBE_API_KEY", None)
-        if not api_key:
-            return "YouTube Video", None
+        if not api_key: return "YouTube Video", None
         url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={yt_id}&key={api_key}"
         response = requests.get(url, timeout=5).json()
         if response.get("items"):
             snippet = response["items"][0]["snippet"]
             title = snippet.get("title", "YouTube Video")
-            
             thumbnails = snippet.get("thumbnails", {})
             thumb_url = None
             for res in ["maxres", "standard", "high", "medium", "default"]:
@@ -52,64 +50,61 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
+# సర్వర్ క్రాష్ అవ్వకుండా అడ్డుకునే కవచం
 class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
     def error(self, msg):
         raise Exception(msg)
 
-# 🌟 ప్యాకేజీలు అన్నింటినీ అడిగి, రియల్ హైయెస్ట్ క్వాలిటీ తెలుసుకునే ఫంక్షన్ 🌟
+# 🌟 1. మీరు అడిగినట్లు అన్ని ప్యాకేజీలను అడిగి హైయెస్ట్ క్వాలిటీ తెలుసుకునే లాజిక్ 🌟
 def get_highest_available_format(url, proxy=None):
     available_heights = set()
     
-    # 1. Ask yt-dlp
+    # 1st Package: yt-dlp
     try:
-        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
+        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}}, 'logger': MyLogger()}
         if proxy and proxy.lower() != "none": opts['proxy'] = proxy
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             for f in info.get('formats', []):
                 h = f.get('height')
                 if h and isinstance(h, int): available_heights.add(h)
-    except Exception:
-        pass
+    except Exception: pass
 
-    # 2. Ask PyTubeFix
+    # 2nd Package: PyTubeFix
     try:
         yt = PyTubeFixDL(url)
         for s in yt.streams.filter(type="video"):
             if s.resolution:
                 res = int(s.resolution.replace('p', ''))
                 available_heights.add(res)
-    except Exception:
-        pass
+    except Exception: pass
 
-    # 3. Ask PyTube
+    # 3rd Package: PyTube
     try:
         yt = PyTubeDL(url)
         for s in yt.streams.filter(type="video"):
             if s.resolution:
                 res = int(s.resolution.replace('p', ''))
                 available_heights.add(res)
-    except Exception:
-        pass
+    except Exception: pass
 
-    # 4. Ask youtube-dl
+    # 4th Package: youtube-dl
     try:
-        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True}
+        opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
         if proxy and proxy.lower() != "none": opts['proxy'] = proxy
         with youtube_dl.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             for f in info.get('formats', []):
                 h = f.get('height')
                 if h and isinstance(h, int): available_heights.add(h)
-    except Exception:
-        pass
+    except Exception: pass
 
     return max(available_heights) if available_heights else 0
 
 # ==========================================
-# 🌟 "వెనకాల ఉన్న క్వాలిటీకి వెళ్ళే" MASTER DOWNLOADER 🌟
+# 🌟 2. మీరు చెప్పిన "ఒకటి ఫెయిల్ అయితే వెనకమాల ఉన్న క్వాలిటీకి వెళ్ళే" MASTER DOWNLOAER 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -118,21 +113,21 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     req_res = res_map.get(quality, 720)
     
-    # యూజర్ అడిగిన క్వాలిటీ లేకపోతే.. వెనకాల ఉన్న క్వాలిటీకి (360p వరకే) వెళ్లే లిస్ట్
+    # 🌟 క్వాలిటీ ఆర్డర్ (Quality Loop) 🌟
     res_list = []
     if quality == "audio":
         res_list = [0]
     elif quality in ["144p", "240p"]:
-        res_list = [req_res] # యూజర్ డైరెక్ట్ గా అడిగితేనే వీటిని ట్రై చేస్తుంది
+        res_list = [req_res] # యూజర్ అడిగితేనే ఈ క్వాలిటీలకు వెళ్తుంది
     else:
         all_res = [2160, 1440, 1080, 720, 480, 360]
-        res_list = [r for r in all_res if r <= req_res]
+        res_list = [r for r in all_res if r <= req_res] # 360p వరకే కిందకు వెళ్తుంది
 
     file_path = None
     download_success = False
     last_error = ""
 
-    # ప్రతి క్వాలిటీకి (ఒకటి ఫెయిల్ అయితే వెనకాల దానికి వెళ్ళడానికి లూప్)
+    # ప్రతి క్వాలిటీ కోసం అన్ని ప్యాకేజీలు వెతికే డబుల్ లూప్
     for current_res in res_list:
         if download_success: break
         
@@ -151,10 +146,14 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
+                    fname = ydl.prepare_filename(info)
+                    
+                    # 🌟 షాడోబ్యాన్ చెకింగ్ (Shadowban Detector) 🌟
                     dl_h = info.get('height', 0)
                     if current_res >= 480 and 0 < dl_h < (current_res - 100):
-                        raise Exception(f"Shadowban: Got {dl_h}p instead of {current_res}p")
-                    fname = ydl.prepare_filename(info)
+                        if os.path.exists(fname): os.remove(fname) # దొంగ ఫైల్ ని డిలీట్ చేస్తుంది
+                        raise Exception(f"Shadowban: YouTube gave {dl_h}p instead of {current_res}p")
+                        
                     if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                     file_path, v_width, v_height, v_duration = fname, info.get('width', 0), dl_h, info.get('duration', 0)
                     download_success = True
@@ -165,7 +164,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 
         if download_success: break
 
-        # 🌟 LAYER 2: YT-DLP (Spoofed Android/TV/iOS/Web, 5 Cookies) 🌟
+        # 🌟 LAYER 2: YT-DLP (Android/iOS/TV, 5 Cookies) 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt)
             opts = {
@@ -179,10 +178,12 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
+                    fname = ydl.prepare_filename(info)
                     dl_h = info.get('height', 0)
                     if current_res >= 480 and 0 < dl_h < (current_res - 100):
-                        raise Exception(f"Shadowban: Got {dl_h}p instead of {current_res}p")
-                    fname = ydl.prepare_filename(info)
+                        if os.path.exists(fname): os.remove(fname)
+                        raise Exception(f"Shadowban: YouTube gave {dl_h}p instead of {current_res}p")
+                        
                     if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                     file_path, v_width, v_height, v_duration = fname, info.get('width', 0), dl_h, info.get('duration', 0)
                     download_success = True
@@ -243,16 +244,18 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
                 'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
                 'format': format_str, 'merge_output_format': 'mp4',
-                'logger': MyLogger() 
+                'logger': MyLogger() # ఇది youtube-dl క్రాష్ ని ఆపుతుంది
             }
             if current_res == 0: ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
             if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+                fname = ydl.prepare_filename(info)
                 dl_h = info.get('height', 0)
                 if current_res >= 480 and 0 < dl_h < (current_res - 100):
+                    if os.path.exists(fname): os.remove(fname)
                     raise Exception(f"Quality too low: Got {dl_h}p instead of {current_res}p")
-                fname = ydl.prepare_filename(info)
+                    
                 if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                 file_path, v_width, v_height, v_duration = fname, info.get('width', 0), dl_h, info.get('duration', 0)
                 download_success = True
@@ -261,7 +264,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             
         if download_success: break
 
-    # అన్నీ ఫెయిల్ అయితే అప్పుడు ఫాల్‌బ్యాక్ కమాండ్ ఇస్తుంది!
+    # ఒకవేళ ఏ క్వాలిటీ (360p వరకు కూడా) ఏ ప్యాకేజీలోనూ దొరకకపోతే... అప్పుడు ఎర్రర్ విసురుతుంది
     if not download_success:
         raise Exception(last_error)
 
@@ -319,7 +322,7 @@ async def progress_bar(current, total, msg, title, header, start_time):
             EDIT_TIME[msg.id] = time.time()
 
 # ==========================================
-# 🌟 QUALITY BUTTONS GENERATOR (ALL PACKAGES CHECK) 🌟
+# 🌟 QUALITY BUTTONS GENERATOR 🌟
 # ==========================================
 async def show_quality_buttons(client, message, url, yt_id, user_id, header, edit_msg=None):
     proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Fetching Details...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
@@ -327,10 +330,10 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
-    # 🌟 మీరు అడిగినట్లు అన్ని ప్యాకేజీలను వెతికి హైయెస్ట్ తెస్తుంది 🌟
+    # 🌟 అన్ని ప్యాకేజీలను అడిగి, హైయెస్ట్ రిజల్యూషన్ తెచ్చుకుంటుంది 🌟
     max_h = await asyncio.to_thread(get_highest_available_format, url, proxy)
     
-    # ఏ ప్యాకేజీ పని చేయకపోయినా డీఫాల్ట్ గా 1080p ఇస్తుంది (యూజర్ బ్లాక్ అవ్వకుండా)
+    # ఒకవేళ ఏ ప్యాకేజీ కూడా సమాధానం చెప్పకపోతే, యూజర్ ని ఆపకుండా డీఫాల్ట్ గా 1080p ఇస్తుంది
     if max_h == 0: max_h = 1080
     
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if max_h >= 2160 else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
@@ -340,6 +343,7 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if max_h >= 480 else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
     btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if max_h >= 360 else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
     
+    # 🌟 144p, 240p బటన్స్ ఎప్పుడూ ఉంటాయి 🌟
     btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if max_h >= 240 else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
     btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if max_h >= 144 else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
 
@@ -366,6 +370,7 @@ async def handle_quality_click(client, callback_query):
     user_id = callback_query.from_user.id
     header = get_header(user_id)
     
+    # 🌟 144p అలర్ట్ ని పక్కాగా ఉంచాను 🌟
     if quality == "144p":
         text = (
             f"{header}⚠️ <b>Confirmation Required!</b>\n\n"
@@ -437,6 +442,7 @@ async def start_download_process(client, event, quality, url):
             last_error = str(e)
 
         if not download_success:
+            # 🌟 ఆఖరి బ్రహ్మాస్త్రం: fallback.py 🌟
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
