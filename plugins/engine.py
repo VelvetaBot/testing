@@ -14,13 +14,11 @@ from database import users_db
 import config
 from datetime import datetime
 
-# కుకీస్ ఫైల్ కి ఇంజిన్ తో పని లేదు కాబట్టి దీన్ని పైన ఉంచవచ్చు
 from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
-# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
@@ -59,11 +57,9 @@ class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
     def error(self, msg):
-        # ఎర్రర్ వస్తే బలవంతంగా క్రాష్ చేసి ఫాల్‌బ్యాక్ కి పంపుతుంది
         raise Exception(msg)
 
 def get_available_formats(url, proxy=None):
-    # 🌟 Master Client Rotation 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -71,7 +67,7 @@ def get_available_formats(url, proxy=None):
         'nocheckcertificate': True,
         'skip_download': True,
         'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
-        'logger': MyLogger() # 🌟 క్రాష్ ఆపడానికి 🌟
+        'logger': MyLogger() 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -106,8 +102,8 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}}, # 🌟 Master Rotation 🌟
-        'logger': MyLogger() # 🌟 ఇక్కడే లూప్ బ్రేక్ అవ్వకుండా కాపాడేది 🌟
+        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}}, 
+        'logger': MyLogger() 
     }
     if proxy and proxy.lower() != "none":
         opts['proxy'] = proxy
@@ -129,9 +125,9 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     except Exception as e1:
         print(f"YT-DLP Failed: {e1}")
         
-        # --- ATTEMPT 2: PyTubeFix ---
+        # --- ATTEMPT 2: PyTubeFix (Removed use_po_token to stop console prompts) ---
         try:
-            yt = PyTubeFixDL(url, use_po_token=True)
+            yt = PyTubeFixDL(url) # 🌟 ఇక్కడ ఆ జామ్ చేసే ట్రిక్ ని తీసేశాను 🌟
             if quality == "audio":
                 stream = yt.streams.get_audio_only()
                 fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
@@ -345,7 +341,6 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
-        # 🌟 ఇక్కడే మీ ఫాల్‌బ్యాక్ లూప్ పక్కాగా తిరుగుతుంది 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
             try:
@@ -358,7 +353,6 @@ async def start_download_process(client, event, quality, url):
                 continue
 
         if not download_success:
-            # 🌟 5 కుకీస్ ఫెయిల్ అయితే పక్కాగా fallback.py కి వెళ్తుంది 🌟
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
