@@ -14,13 +14,11 @@ from database import users_db
 import config
 from datetime import datetime
 
-# కుకీస్ ఫైల్ కి ఇంజిన్ తో పని లేదు కాబట్టి దీన్ని పైన ఉంచవచ్చు
 from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
-# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
@@ -54,7 +52,6 @@ def get_yt_metadata(yt_id):
     except Exception:
         return "YouTube Video", None
 
-# 🌟 YT-DLP క్రాష్ అవ్వకుండా ఆపడానికి కస్టమ్ లాగర్ 🌟
 class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
@@ -62,11 +59,10 @@ class MyLogger(object):
         raise Exception(msg)
 
 def get_available_formats(url, proxy=None):
-    # 🌟 FIXED ROTATION: TV, Web ని ఫస్ట్ పెడితేనే 4K క్వాలిటీలు అన్‌లాక్ అవుతాయి 🌟
+    # 🌟 ముందుగా కుకీస్ లేకుండా ట్రై చేస్తాం (దీనివల్ల YouTube 4K క్వాలిటీలను దాచదు) 🌟
     opts = {
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt',
         'nocheckcertificate': True,
         'skip_download': True,
         'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}},
@@ -85,7 +81,23 @@ def get_available_formats(url, proxy=None):
                 if h and isinstance(h, int):
                     available_heights.add(h)
     except Exception:
-        pass
+        # ఒకవేళ వీడియో Age-restricted అయ్యి కుకీస్ లేకపోతే ఫెయిల్ అవుతుంది, అప్పుడు కుకీస్ తో ట్రై చేస్తాం
+        opts['cookiefile'] = 'cookies.txt'
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                formats = info.get('formats', [])
+                for f in formats:
+                    h = f.get('height')
+                    if h and isinstance(h, int):
+                        available_heights.add(h)
+        except Exception:
+            pass
+            
+    # ఏ క్వాలిటీ దొరకకపోయినా, డీఫాల్ట్ గా బటన్స్ అన్‌లాక్ చేసి ఉంచడానికి 
+    if not available_heights:
+        available_heights = {144, 240, 360, 480, 720, 1080, 1440, 2160}
+        
     return available_heights
 
 # ==========================================
@@ -344,6 +356,7 @@ async def start_download_process(client, event, quality, url):
         download_success = False
         last_error = ""
 
+        # 🌟 ఐదు కుకీస్ పక్కాగా తిరిగే లూప్ 🌟
         for attempt in range(5):
             cookie_file = get_working_cookie_file(attempt) 
             try:
@@ -359,7 +372,7 @@ async def start_download_process(client, event, quality, url):
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
             
-            log_bot_problem(f"Download Failed (All 5 cookies exhausted). Final Error: {last_error}", "engine.py")
+            log_bot_problem(f"Download Failed (All methods exhausted). Final Error: {last_error}", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
             return
