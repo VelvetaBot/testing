@@ -6,9 +6,6 @@ class Config:
     API_ID = int(os.environ.get("API_ID", 11253846))
     API_HASH = os.environ.get("API_HASH", "8db4eb50f557faa9a5756e64fb74a51a")
     
-    # Google Gemini
-    GEMINI_API_KEY = "AIzaSyB3KfZfHcUlN9n4s6teCk0CqO5WkCFOIaU" 
-    
     # YouTube API Key
     YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "AIzaSyBJhg5O3FOngBJC2TuUZUQg1U82S61bZFo")
     
