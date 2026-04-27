@@ -41,7 +41,6 @@ def get_yt_metadata(yt_id):
             title = snippet.get("title", "YouTube Video")
             thumbnails = snippet.get("thumbnails", {})
             thumb_url = None
-            # Telegram accepts smaller thumbnails safely
             for res in ["medium", "high", "standard", "maxres", "default"]:
                 if res in thumbnails:
                     thumb_url = thumbnails[res]["url"]
@@ -56,9 +55,10 @@ class MyLogger(object):
     def warning(self, msg): pass
     def error(self, msg): pass 
 
-# 🌟 1. అన్ని ప్యాకేజీలను అడిగి క్వాలిటీ తెలుసుకునే లాజిక్ (షార్ట్స్ సైజు ఫిక్స్ తో) 🌟
+# 🌟 1. Shorts ని కరెక్ట్ గా క్యాలిక్యులేట్ చేసే లాజిక్ (డబల్ చెకింగ్) 🌟
 def get_highest_available_format(url, proxy=None):
     available_res = set()
+    is_short = "shorts" in url.lower()
     
     # 1. Ask yt-dlp
     try:
@@ -69,8 +69,11 @@ def get_highest_available_format(url, proxy=None):
             for f in info.get('formats', []):
                 h = f.get('height')
                 w = f.get('width')
-                if h and w:
-                    available_res.add(max(h, w)) # 🌟 షార్ట్స్ కైనా, నార్మల్ కైనా పెద్ద సైజు తీసుకుంటుంది 🌟
+                if h and isinstance(h, int) and w and isinstance(w, int): 
+                    if is_short and h > w:
+                        available_res.add(w) # షార్ట్ అయితే విడ్త్ తీసుకుంటుంది
+                    else:
+                        available_res.add(h) # నార్మల్ అయితే హైట్ తీసుకుంటుంది
     except: pass
 
     # 2. Ask PyTubeFix
@@ -99,13 +102,17 @@ def get_highest_available_format(url, proxy=None):
                 for f in info.get('formats', []):
                     h = f.get('height')
                     w = f.get('width')
-                    if h and w: available_res.add(max(h, w))
+                    if h and isinstance(h, int) and w and isinstance(w, int): 
+                        if is_short and h > w:
+                            available_res.add(w)
+                        else:
+                            available_res.add(h)
         except: pass
 
     return max(available_res) if available_res else 0
 
 # ==========================================
-# 🌟 2. PERFECT FALLBACK ROUTING (Client Rotation & Quality Drop) 🌟
+# 🌟 2. PERFECT FALLBACK ROUTING (With Shorts Resolution Fix) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -126,13 +133,15 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     for current_res in res_list:
         if download_success: break
         
+        # 🌟 SHORTS RESOLUTION FIX 🌟
         if current_res == 0:
             format_str = 'bestaudio/best'
         else:
-            # 🌟 Shorts కోసం width, నార్మల్ వీడియో కోసం height ని వెతుకుతుంది 🌟
             if is_short:
+                # షార్ట్స్ కి విడ్త్ ని పట్టుకుని హైయెస్ట్ వీడియో లాగుతుంది
                 format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
             else:
+                # నార్మల్ వీడియోలకి హైట్ ని పట్టుకుంటుంది
                 format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
 
         def try_ytdlp(client_type):
@@ -151,8 +160,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
-                        
-                        # 🌟 సైజు మార్చే లాజిక్ తీసేశాను, ప్యాకేజీ ఏది ఇస్తే అదే తీసుకుంటుంది 🌟
                         dl_h = info.get('height', 0)
                         dl_w = info.get('width', 0)
 
@@ -189,7 +196,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    # 🌟 ప్యాకేజీ ఇచ్చిన సైజు బట్టి నార్మల్/షార్ట్ అని టెలిగ్రామ్ కి పంపుతుంది 🌟
+                    # ప్యాకేజీ ఇచ్చిన సైజు బట్టి నార్మల్/షార్ట్ అని పంపుతుంది
                     dl_h = current_res
                     dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
                     file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
@@ -302,6 +309,7 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
     max_h = await asyncio.to_thread(get_highest_available_format, url, proxy)
+    
     if max_h == 0: max_h = 1080
     
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if max_h >= 2160 else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
