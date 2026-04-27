@@ -41,8 +41,6 @@ def get_yt_metadata(yt_id):
             title = snippet.get("title", "YouTube Video")
             thumbnails = snippet.get("thumbnails", {})
             thumb_url = None
-            
-            # 🌟 Telegram వాల్‌పేపర్ రూల్స్ కోసం 'medium' ని ముందు పెట్టాను (200KB కన్నా తక్కువ ఉండటానికి) 🌟
             for res in ["medium", "high", "standard", "maxres", "default"]:
                 if res in thumbnails:
                     thumb_url = thumbnails[res]["url"]
@@ -55,12 +53,12 @@ def get_yt_metadata(yt_id):
 class MyLogger(object):
     def debug(self, msg): pass
     def warning(self, msg): pass
-    def error(self, msg):
-        raise Exception(msg)
+    def error(self, msg): pass # ఎర్రర్స్ తో క్రాష్ అవ్వకుండా సైలెంట్ చేశాను
 
-# 🌟 డబల్ చెకింగ్: అన్ని ప్యాకేజీలను అడిగి హైయెస్ట్ క్వాలిటీ తెలుసుకునే లాజిక్ 🌟
+# 🌟 Shorts ని కూడా కరెక్ట్ గా క్యాలిక్యులేట్ చేసే హైయెస్ట్ ఫార్మాట్ చెకర్ 🌟
 def get_highest_available_format(url, proxy=None):
-    available_heights = set()
+    available_res = set()
+    is_short = "shorts" in url.lower()
     
     # 1. Ask yt-dlp
     try:
@@ -70,31 +68,33 @@ def get_highest_available_format(url, proxy=None):
             info = ydl.extract_info(url, download=False)
             for f in info.get('formats', []):
                 h = f.get('height')
-                if h and isinstance(h, int): available_heights.add(h)
-    except Exception: pass
+                w = f.get('width')
+                if h and isinstance(h, int): 
+                    # Shorts కి విడ్త్ తీసుకుంటుంది, నార్మల్ వాటికి హైట్ తీసుకుంటుంది
+                    if is_short and w and isinstance(w, int) and h > w:
+                        available_res.add(w)
+                    else:
+                        available_res.add(h)
+    except: pass
 
     # 2. Ask PyTubeFix
-    if not available_heights:
+    if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeFixDL(url)
             for s in yt.streams.filter(type="video"):
-                if s.resolution:
-                    res = int(s.resolution.replace('p', ''))
-                    available_heights.add(res)
-        except Exception: pass
+                if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
+        except: pass
 
     # 3. Ask PyTube
-    if not available_heights:
+    if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeDL(url)
             for s in yt.streams.filter(type="video"):
-                if s.resolution:
-                    res = int(s.resolution.replace('p', ''))
-                    available_heights.add(res)
-        except Exception: pass
+                if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
+        except: pass
 
     # 4. Ask youtube-dl
-    if not available_heights:
+    if not available_res or max(available_res) <= 360:
         try:
             opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
             if proxy and proxy.lower() != "none": opts['proxy'] = proxy
@@ -102,13 +102,18 @@ def get_highest_available_format(url, proxy=None):
                 info = ydl.extract_info(url, download=False)
                 for f in info.get('formats', []):
                     h = f.get('height')
-                    if h and isinstance(h, int): available_heights.add(h)
-        except Exception: pass
+                    w = f.get('width')
+                    if h and isinstance(h, int): 
+                        if is_short and w and isinstance(w, int) and h > w:
+                            available_res.add(w)
+                        else:
+                            available_res.add(h)
+        except: pass
 
-    return max(available_heights) if available_heights else 0
+    return max(available_res) if available_res else 0
 
 # ==========================================
-# 🌟 6-LAYER MASTER DOWNLOAER & FORMAT FIXER 🌟
+# 🌟 PERFECT FALLBACK ROUTING (Client Rotation & Quality Drop) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -116,16 +121,12 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         
     res_map = {"4k": 2160, "2k": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240, "144p": 144}
     req_res = res_map.get(quality, 720)
-    is_short = "shorts" in url.lower()  # 🌟 Shorts ని గుర్తుపట్టే పవర్ ఫుల్ సెన్సార్ 🌟
+    is_short = "shorts" in url.lower()
     
     res_list = []
-    if quality == "audio":
-        res_list = [0]
-    elif quality in ["144p", "240p"]:
-        res_list = [req_res] 
-    else:
-        all_res = [2160, 1440, 1080, 720, 480, 360]
-        res_list = [r for r in all_res if r <= req_res] 
+    if quality == "audio": res_list = [0]
+    elif quality in ["144p", "240p"]: res_list = [req_res]
+    else: res_list = [r for r in [2160, 1440, 1080, 720, 480, 360] if r <= req_res]
 
     file_path = None
     download_success = False
@@ -134,88 +135,58 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     for current_res in res_list:
         if download_success: break
         
-        format_str = 'bestaudio/best' if current_res == 0 else f'bestvideo[height<={current_res}]+bestaudio/bestvideo[width<={current_res}]+bestaudio/best'
+        if current_res == 0:
+            format_str = 'bestaudio/best'
+        else:
+            # Shorts కోసం కరెక్ట్ ఫార్మాట్ స్ట్రింగ్
+            format_str = f'bestvideo[height<={current_res}]+bestaudio/best' if not is_short else f'bestvideo[width<={current_res}]+bestaudio/best'
 
-        # 🌟 LAYER 1: YT-DLP (Normal, 5 Cookies) 🌟
-        for attempt in range(5):
-            cookie_file = get_working_cookie_file(attempt)
-            opts = {
-                'quiet': True, 'no_warnings': True, 'cookiefile': cookie_file,
-                'nocheckcertificate': True, 'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-                'logger': MyLogger(), 'format': format_str, 'merge_output_format': 'mp4'
-            }
-            if current_res == 0: opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
-            if proxy and proxy.lower() != "none": opts['proxy'] = proxy
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    dl_h = info.get('height', 0)
-                    dl_w = info.get('width', 0)
-                    
-                    if current_res >= 480 and 0 < dl_h < (current_res - 100):
+        def try_ytdlp(client_type):
+            for attempt in range(5):
+                cookie_file = get_working_cookie_file(attempt)
+                opts = {
+                    'quiet': True, 'no_warnings': True, 'cookiefile': cookie_file,
+                    'nocheckcertificate': True, 'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
+                    'logger': MyLogger(), 'format': format_str, 'merge_output_format': 'mp4'
+                }
+                if client_type: opts['extractor_args'] = {'youtube': {'player_client': [client_type]}}
+                if proxy and proxy.lower() != "none": opts['proxy'] = proxy
+                if current_res == 0: opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
-                        if os.path.exists(fname): os.remove(fname) 
-                        raise Exception(f"Shadowban: YouTube gave {dl_h}p instead of {current_res}p")
+                        dl_h = info.get('height', 0)
+                        dl_w = info.get('width', 0)
                         
-                    # 🌟 Shorts సైజులను సరిచేసే ట్రిక్ 🌟
-                    if is_short and dl_w > dl_h:
-                        dl_w, dl_h = dl_h, dl_w
-                    elif dl_w == 0 and current_res != 0:
-                        dl_h = dl_h if dl_h > 0 else current_res
-                        dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
-                        
-                    fname = ydl.prepare_filename(info)
-                    if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
-                    download_success = True
-                    break
-            except Exception as e:
-                last_error = str(e)
-                continue
-                
-        if download_success: break
+                        # Shorts సైజు ఫిక్స్
+                        if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
+                        elif dl_w == 0 and current_res != 0:
+                            dl_h = dl_h if dl_h > 0 else current_res
+                            dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
 
-        # 🌟 LAYER 2: YT-DLP (Android/iOS/TV/Web, 5 Cookies) 🌟
-        for attempt in range(5):
-            cookie_file = get_working_cookie_file(attempt)
-            opts = {
-                'quiet': True, 'no_warnings': True, 'cookiefile': cookie_file,
-                'nocheckcertificate': True, 'outtmpl': f'downloads/{yt_id}_%(title)s.%(ext)s',
-                'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv', 'web']}},
-                'logger': MyLogger(), 'format': format_str, 'merge_output_format': 'mp4'
-            }
-            if current_res == 0: opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
-            if proxy and proxy.lower() != "none": opts['proxy'] = proxy
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    dl_h = info.get('height', 0)
-                    dl_w = info.get('width', 0)
-                    
-                    if current_res >= 480 and 0 < dl_h < (current_res - 100):
-                        fname = ydl.prepare_filename(info)
-                        if os.path.exists(fname): os.remove(fname)
-                        raise Exception(f"Shadowban: YouTube gave {dl_h}p instead of {current_res}p")
-                        
-                    # 🌟 Shorts సైజులను సరిచేసే ట్రిక్ 🌟
-                    if is_short and dl_w > dl_h:
-                        dl_w, dl_h = dl_h, dl_w
-                    elif dl_w == 0 and current_res != 0:
-                        dl_h = dl_h if dl_h > 0 else current_res
-                        dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
-                        
-                    fname = ydl.prepare_filename(info)
-                    if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
-                    download_success = True
-                    break
-            except Exception as e:
-                last_error = str(e)
-                continue
-                
-        if download_success: break
+                        if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
+                        return fname, dl_w, dl_h, info.get('duration', 0)
+                except Exception as e:
+                    pass
+            return None
 
-        # 🌟 LAYER 3: PyTubeFix 🌟
+        res = try_ytdlp(None)
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+
+        res = try_ytdlp('android')
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+
+        res = try_ytdlp('ios')
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+
+        res = try_ytdlp('tv')
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        
+        res = try_ytdlp('web')
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+
         try:
             yt = PyTubeFixDL(url)
             if current_res == 0:
@@ -228,19 +199,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    # 🌟 Shorts కోసం కరెక్ట్ సైజును ఇక్కడ ఇస్తున్నాం 🌟
                     dl_h = current_res
                     dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
                     file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
                     download_success = True
-                else:
-                    raise Exception(f"PyTubeFix: {current_res}p not available")
-        except Exception as e:
-            last_error = str(e)
-
+        except: pass
         if download_success: break
 
-        # 🌟 LAYER 4: PyTube 🌟
         try:
             yt = PyTubeDL(url)
             if current_res == 0:
@@ -253,55 +218,40 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-                    # 🌟 Shorts కోసం కరెక్ట్ సైజును ఇక్కడ ఇస్తున్నాం 🌟
                     dl_h = current_res
                     dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
                     file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
                     download_success = True
-                else:
-                    raise Exception(f"PyTube: {current_res}p not available")
-        except Exception as e:
-            last_error = str(e)
-            
+        except: pass
         if download_success: break
-            
-        # 🌟 LAYER 5: youtube-dl 🌟
+
         try:
             ydl_opts = {
                 'quiet': True, 'no_warnings': True, 'nocheckcertificate': True,
                 'outtmpl': f'downloads/{yt_id}_ydl_%(title)s.%(ext)s',
-                'format': format_str, 'merge_output_format': 'mp4',
-                'logger': MyLogger() 
+                'format': format_str, 'merge_output_format': 'mp4', 'logger': MyLogger()
             }
             if current_res == 0: ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
             if proxy and proxy.lower() != "none": ydl_opts['proxy'] = proxy
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+                fname = ydl.prepare_filename(info)
                 dl_h = info.get('height', 0)
                 dl_w = info.get('width', 0)
                 
-                if current_res >= 480 and 0 < dl_h < (current_res - 100):
-                    fname = ydl.prepare_filename(info)
-                    if os.path.exists(fname): os.remove(fname)
-                    raise Exception(f"Quality too low: Got {dl_h}p instead of {current_res}p")
-                    
-                if is_short and dl_w > dl_h:
-                    dl_w, dl_h = dl_h, dl_w
+                if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
                 elif dl_w == 0 and current_res != 0:
                     dl_h = dl_h if dl_h > 0 else current_res
                     dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
 
-                fname = ydl.prepare_filename(info)
                 if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                 file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
                 download_success = True
-        except Exception as e:
-            last_error = str(e)
-            
+        except: pass
         if download_success: break
 
     if not download_success:
-        raise Exception(last_error)
+        raise Exception("All Qualities and Clients Exhausted")
 
     return file_path, v_width, v_height, v_duration
 
@@ -366,6 +316,8 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
     max_h = await asyncio.to_thread(get_highest_available_format, url, proxy)
+    
+    # ఎర్రర్ వల్ల ఏదీ దొరకకపోతే 1080p ఇస్తుంది
     if max_h == 0: max_h = 1080
     
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if max_h >= 2160 else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
