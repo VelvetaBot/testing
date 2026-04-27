@@ -19,11 +19,12 @@ from plugins.cookie_manager import get_working_cookie_file
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
+# 🌟 మీరు ఇచ్చిన పర్ఫెక్ట్ స్పేసింగ్ & బ్రాండింగ్ ఫంక్షన్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b></blockquote>\n\n"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b></blockquote>\n\n"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>"
+    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
     else: return ""
 
 def extract_yt_id(text):
@@ -55,12 +56,11 @@ class MyLogger(object):
     def warning(self, msg): pass
     def error(self, msg): pass 
 
-# 🌟 1. Shorts ని కరెక్ట్ గా క్యాలిక్యులేట్ చేసే లాజిక్ (డబల్ చెకింగ్) 🌟
+# 🌟 అన్ని ప్యాకేజీలను అడిగి క్వాలిటీ తెలుసుకునే లాజిక్ 🌟
 def get_highest_available_format(url, proxy=None):
     available_res = set()
     is_short = "shorts" in url.lower()
     
-    # 1. Ask yt-dlp
     try:
         opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'extractor_args': {'youtube': {'player_client': ['tv', 'web', 'android', 'ios']}}, 'logger': MyLogger()}
         if proxy and proxy.lower() != "none": opts['proxy'] = proxy
@@ -71,12 +71,11 @@ def get_highest_available_format(url, proxy=None):
                 w = f.get('width')
                 if h and isinstance(h, int) and w and isinstance(w, int): 
                     if is_short and h > w:
-                        available_res.add(w) # షార్ట్ అయితే విడ్త్ తీసుకుంటుంది
+                        available_res.add(w)
                     else:
-                        available_res.add(h) # నార్మల్ అయితే హైట్ తీసుకుంటుంది
+                        available_res.add(h)
     except: pass
 
-    # 2. Ask PyTubeFix
     if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeFixDL(url)
@@ -84,7 +83,6 @@ def get_highest_available_format(url, proxy=None):
                 if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
         except: pass
 
-    # 3. Ask PyTube
     if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeDL(url)
@@ -92,7 +90,6 @@ def get_highest_available_format(url, proxy=None):
                 if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
         except: pass
 
-    # 4. Ask youtube-dl
     if not available_res or max(available_res) <= 360:
         try:
             opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
@@ -112,7 +109,7 @@ def get_highest_available_format(url, proxy=None):
     return max(available_res) if available_res else 0
 
 # ==========================================
-# 🌟 2. PERFECT FALLBACK ROUTING (With Shorts Resolution Fix) 🌟
+# 🌟 PERFECT FALLBACK ROUTING 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -133,15 +130,12 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     for current_res in res_list:
         if download_success: break
         
-        # 🌟 SHORTS RESOLUTION FIX 🌟
         if current_res == 0:
             format_str = 'bestaudio/best'
         else:
             if is_short:
-                # షార్ట్స్ కి విడ్త్ ని పట్టుకుని హైయెస్ట్ వీడియో లాగుతుంది
                 format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
             else:
-                # నార్మల్ వీడియోలకి హైట్ ని పట్టుకుంటుంది
                 format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
 
         def try_ytdlp(client_type):
@@ -165,7 +159,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
 
                         if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                         return fname, dl_w, dl_h, info.get('duration', 0)
-                except Exception as e:
+                except Exception:
                     pass
             return None
 
@@ -196,7 +190,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    # ప్యాకేజీ ఇచ్చిన సైజు బట్టి నార్మల్/షార్ట్ అని పంపుతుంది
                     dl_h = current_res
                     dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
                     file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
@@ -309,7 +302,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
     max_h = await asyncio.to_thread(get_highest_available_format, url, proxy)
-    
     if max_h == 0: max_h = 1080
     
     btn_4k = InlineKeyboardButton("🚀 4K (Ultra HD)", callback_data=f"dl|4k|{yt_id}") if max_h >= 2160 else InlineKeyboardButton("🔒 4K (Ultra HD)", callback_data="locked_quality")
