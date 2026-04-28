@@ -95,9 +95,6 @@ def get_highest_available_format(url, proxy=None):
 
     return max(available_res) if available_res else 0
 
-# ==========================================
-# 🌟 PERFECT FALLBACK ROUTING (With Width & Height Fix) 🌟
-# ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
@@ -123,10 +120,8 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         if current_res == 0:
             format_str = 'bestaudio/best'
         else:
-            if is_short:
-                format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
-            else:
-                format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
+            if is_short: format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
+            else: format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
 
         def try_ytdlp(client_type):
             for attempt in range(5):
@@ -144,15 +139,9 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
-                        
                         dl_w = info.get('width') or 0
                         dl_h = info.get('height') or 0
-                        
-                        # Shorts Orientation Lock
-                        if is_short and dl_w > dl_h:
-                            dl_w, dl_h = dl_h, dl_w
-                            
-                        # Dimensions fallback if missing
+                        if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
                         if dl_w == 0 or dl_h == 0:
                             if is_short:
                                 dl_w = current_res if current_res > 0 else 720
@@ -163,8 +152,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
 
                         if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
                         return fname, dl_w, dl_h, info.get('duration', 0)
-                except Exception as e:
-                    logger.error(f"YTDLP {client_type} Attempt {attempt} Failed: {str(e)}")
+                except Exception as e: logger.error(f"YTDLP Attempt Failed: {str(e)}")
             return None
 
         res = try_ytdlp(None)
@@ -234,8 +222,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 
                 dl_w = info.get('width') or 0
                 dl_h = info.get('height') or 0
-                if is_short and dl_w > dl_h:
-                    dl_w, dl_h = dl_h, dl_w
+                if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
                 if dl_w == 0 or dl_h == 0:
                     dl_w = current_res if is_short else int(current_res * 16 / 9)
                     dl_h = int(current_res * 16 / 9) if is_short else current_res
@@ -367,6 +354,9 @@ async def start_download_process(client, event, quality, url):
     user = users_db.find_one({"user_id": user_id}) or {}
     proxy = user.get("proxy")
     
+    # 🌟 SHORTS ASPECT RATIO FIX 🌟
+    is_short = "shorts" in url.lower()
+    
     reply_to_id = event.message.reply_to_message_id if event.message.reply_to_message else event.message.id
     sent_msg = event.message
 
@@ -386,6 +376,10 @@ async def start_download_process(client, event, quality, url):
                     handler.write(img_data)
                 final_thumb = yt_thumb_path
             except Exception as e: logger.error(f"Thumbnail Error: {e}")
+
+        # 🌟 SHORTS కి వాల్‌పేపర్ (థంబ్‌నెయిల్) పంపొద్దు, అప్పుడే అది నిలువుగా ఉంటుంది 🌟
+        if is_short and quality != "audio":
+            final_thumb = None
 
         await safe_edit_text(sent_msg, f"{header}📥 <b>Processing & Downloading...</b>\n🎬 {video_title}")
 
@@ -417,7 +411,6 @@ async def start_download_process(client, event, quality, url):
                 progress=progress_bar, progress_args=(sent_msg, video_title, header, start_time)
             )
         else:
-            # 🌟 WIDTH AND HEIGHT ARE NOW PASSED EXACTLY AS RECEIVED! 🌟
             await client.send_video(
                 chat_id=user_id, video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
