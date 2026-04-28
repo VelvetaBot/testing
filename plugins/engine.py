@@ -19,12 +19,11 @@ from plugins.cookie_manager import get_working_cookie_file
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
-# 🌟 మీరు ఇచ్చిన పర్ఫెక్ట్ స్పేసింగ్ & బ్రాండింగ్ ఫంక్షన్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>"
-    elif plan == "ADS_PREMIUM": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
+    elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
     else: return ""
 
 def extract_yt_id(text):
@@ -56,7 +55,6 @@ class MyLogger(object):
     def warning(self, msg): pass
     def error(self, msg): pass 
 
-# 🌟 అన్ని ప్యాకేజీలను అడిగి క్వాలిటీ తెలుసుకునే లాజిక్ 🌟
 def get_highest_available_format(url, proxy=None):
     available_res = set()
     is_short = "shorts" in url.lower()
@@ -126,6 +124,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
 
     file_path = None
     download_success = False
+    v_duration = 0
 
     for current_res in res_list:
         if download_success: break
@@ -154,29 +153,27 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
-                        dl_h = info.get('height', 0)
-                        dl_w = info.get('width', 0)
 
                         if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                        return fname, dl_w, dl_h, info.get('duration', 0)
+                        return fname, info.get('duration', 0)
                 except Exception:
                     pass
             return None
 
         res = try_ytdlp(None)
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('android')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('ios')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('tv')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
         
         res = try_ytdlp('web')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         try:
             yt = PyTubeFixDL(url)
@@ -184,15 +181,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
-                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    dl_h = current_res
-                    dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
         except: pass
         if download_success: break
@@ -203,15 +198,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pt.mp3")
-                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-                    dl_h = current_res
-                    dl_w = int(dl_h * 9 / 16) if is_short else int(dl_h * 16 / 9)
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
         except: pass
         if download_success: break
@@ -227,11 +220,9 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 fname = ydl.prepare_filename(info)
-                dl_h = info.get('height', 0)
-                dl_w = info.get('width', 0)
 
                 if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
+                file_path, v_duration = fname, info.get('duration', 0)
                 download_success = True
         except: pass
         if download_success: break
@@ -239,7 +230,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not download_success:
         raise Exception("All Qualities and Clients Exhausted")
 
-    return file_path, v_width, v_height, v_duration
+    return file_path, v_duration
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -398,7 +389,7 @@ async def start_download_process(client, event, quality, url):
         download_success = False
 
         try:
-            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+            file_path, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
             download_success = True
         except Exception as e:
             pass
@@ -427,11 +418,12 @@ async def start_download_process(client, event, quality, url):
                 progress_args=(sent_msg, video_title, header, start_time)
             )
         else:
+            # 🌟 No width or height passed here. Telegram handles it perfectly based on the file 🌟
             await client.send_video(
                 chat_id=user_id, 
                 video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
-                width=v_width, height=v_height, duration=v_duration,
+                duration=v_duration,
                 thumb=final_thumb, 
                 reply_to_message_id=reply_to_id,
                 reply_markup=extract_kb, 
