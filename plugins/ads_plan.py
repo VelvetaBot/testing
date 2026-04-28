@@ -3,6 +3,7 @@ import urllib.parse
 import requests
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.errors import MessageNotModified
@@ -10,12 +11,26 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import users_db
 import config
 
+# సెటప్ లాగ్స్
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 ADS_PLANS = {"1": 0.5, "3": 2, "5": 4, "7": 9, "10": 14, "25": 28, "30": 32}
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# లాగ్స్ ని సెట్ చేస్తున్నాం, లోపల ఏం జరిగినా బయట పడుతుంది!
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 🌟 DIRECT INTEGRATION: No more "No SHORTENERS found" errors! 🌟
+SHORTENERS = {
+    "gplinks.com": os.environ.get("GPLINKS_TOKEN", "6cfb65c98aac02096414e7df33c7d067bb850c5f"),
+    "xui.io": os.environ.get("XUI_TOKEN", "c7f638092aef394f260ebbb9846a4dc2f98f65cc"),
+    "shrinkme.io": os.environ.get("SHRINKME_TOKEN", "3c1a01f8050cd2d281b836aa1a2464bdf4b280e9"),
+    "droplink.co": os.environ.get("DROPLINK_TOKEN", "ff72b15dc3b6f4cfbddd00dd63ca8f9669a39b91"),
+    "cutwin.com": os.environ.get("CUTWIN_TOKEN", "7bbcbe4c505bc85564bf3d2bad62e3b4408de516"),
+    "uii.io": os.environ.get("UII_TOKEN", "e96c580838fd512e84cb64fe2606ce7484829eca"),
+    "shrinkearn.com": os.environ.get("SHRINKEARN_TOKEN", "ab54de394b711d8097c9b4968d2e2489a478b824"),
+    "short.pe": os.environ.get("SHORTPE_TOKEN", "10cd83baa7438935fd74033b92c8eb1ad0d2e505"),
+    "shrink.pe": os.environ.get("SHRINKPE_TOKEN", "285832fc86a8b6acead3e9cf7c2cc954f9726651"),
+    "linkjust.com": os.environ.get("LINKJUST_TOKEN", "4d8b73c722e7826f6dc0f8d1f84b765422bf9e3e")
+}
 
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
@@ -29,7 +44,6 @@ def get_header(user_id):
 
 def fetch_shortlink(api_url):
     try:
-        # బ్రౌజర్ లాగా యాక్ట్ చేయడానికి పవర్ఫుల్ హెడర్స్
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -37,26 +51,20 @@ def fetch_shortlink(api_url):
         }
         res = requests.get(api_url, headers=headers, timeout=15)
         
-        logger.info(f"API Response Code: {res.status_code}") # లాగ్ లో పడుతుంది
-        
-        # 1. JSON చెకింగ్
         try:
             data = res.json()
-            logger.info(f"API JSON Response: {data}")
             if data and (str(data.get("status")).lower() in ["success", "1", "true"] or "shortenedUrl" in data or "short_url" in data):
                 return data.get("shortenedUrl") or data.get("short_url") or data.get("url")
         except ValueError:
-            pass # JSON ఫెయిల్ అయితే టెక్స్ట్ కి వెళ్తుంది
+            pass 
             
-        # 2. Text చెకింగ్
         text_res = res.text.strip()
-        logger.info(f"API Text Response: {text_res[:50]}...")
         if text_res.startswith("http"):
             return text_res
             
         return None
     except Exception as e:
-        logger.error(f"Error fetching shortlink: {e}") # అసలు ఎర్రర్ లాగ్ లో పడుతుంది
+        logger.error(f"Error fetching shortlink: {e}")
         return None
 
 async def generate_ad_link(user_id, ad_number):
@@ -64,19 +72,12 @@ async def generate_ad_link(user_id, ad_number):
     target_url = f"https://t.me/{bot_username}?start=ad_{user_id}_{ad_number}"
     encoded_url = urllib.parse.quote(target_url)
     
-    shorteners = getattr(config, "SHORTENERS", {})
-    if not shorteners: 
-        logger.error("No SHORTENERS found in config!")
-        return None 
-        
-    shortener_list = list(shorteners.items())
+    shortener_list = list(SHORTENERS.items())
     
     for attempt in range(5):
         if not shortener_list: break
         domain, api_key = random.choice(shortener_list)
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
-        
-        logger.info(f"Attempt {attempt+1}: Trying {domain}...")
         
         short_url = await asyncio.to_thread(fetch_shortlink, api_url)
         if short_url:
