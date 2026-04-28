@@ -15,9 +15,12 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>"
-    elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
-    else: return ""
+    if plan == "PREMIUM": 
+        return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>"
+    elif plan == "ADS": 
+        return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
+    else: 
+        return ""
 
 async def generate_ad_link(user_id, ad_number):
     bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
@@ -42,36 +45,27 @@ async def show_ads_plan_menu(client, callback_query):
     header = get_header(callback_query.from_user.id)
     text = (
         f"{header}\n"
-        "🔹 <b>Ads Plan</b>\n"
-        "━━━━━━━━━━━━━━\n"
-        "🚀 <b>Features Unlocked:</b>\n"
-        "✔️ High Quality Downloads\n"
-        "✔️ Basic speed\n"
-        "✔️ Custom Wallpapers\n"
-        "✔️ Quality Selection\n"
-        "━━━━━━━━━━━━━━\n"
-        "👇 <b>📦 Please select a plan to continue</b>"
+        "📦 <b>Please select a plan to continue</b>\n\n"
     )
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("1 Ad (0.5 day)", callback_data="select_adplan_1")],
+        [InlineKeyboardButton("1 Ad  (0.5 day)", callback_data="select_adplan_1")],
         [InlineKeyboardButton("3 Ads (2 days)", callback_data="select_adplan_3")],
         [InlineKeyboardButton("5 Ads (4 days)", callback_data="select_adplan_5")],
         [InlineKeyboardButton("7 Ads (9 days)", callback_data="select_adplan_7")],
         [InlineKeyboardButton("10 Ads (2 weeks)", callback_data="select_adplan_10")],
         [InlineKeyboardButton("25 Ads (4 weeks)", callback_data="select_adplan_25")],
         [InlineKeyboardButton("30 Ads (30+2 days)", callback_data="select_adplan_30")],
-        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")],
-        [InlineKeyboardButton("🔙 Back", callback_data="back_to_upgrade_menu")]
+        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")]
     ])
     await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("check_ads_status"))
 async def check_ads_status(client, callback_query):
-    await callback_query.answer("📩 Status: Please complete the given Ad tasks or check /my_plan", show_alert=True)
+    await callback_query.answer("Status: Please complete the given Ad tasks or check /my_plan", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^select_adplan_(\d+)$"))
 async def start_ad_plan(client, callback_query):
-    try: await callback_query.answer("⏳ Processing...", show_alert=False)
+    try: await callback_query.answer("Processing...", show_alert=False)
     except: pass
     user_id = callback_query.from_user.id
     target_ads = int(callback_query.data.split("_")[2])
@@ -92,7 +86,7 @@ async def send_next_ad(message, user_id, current_ad_num, target_ads):
 
 @Client.on_callback_query(filters.regex(r"^skip_ad_(\d+)$"))
 async def change_ad_link(client, callback_query):
-    try: await callback_query.answer("🔄 Changing Ad Link...", show_alert=False)
+    try: await callback_query.answer("Changing Ad Link...", show_alert=False)
     except: pass
     user_id = callback_query.from_user.id
     target_ads = users_db.find_one({"user_id": user_id}).get("ad_progress", {}).get("target", 1)
@@ -123,16 +117,16 @@ async def ad_return_handler(client, message):
     
     if completed >= target:
         expiry_date = datetime.now(IST) + timedelta(days=days)
-        now_str = datetime.now(IST).strftime('%Y-%m-%d %I:%M %p')
+        now_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
         users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ads"}, "$unset": {"ad_progress": ""}})
         header = get_header(user_id)
         success_text = (
             f"{header}\n"
             "🎉 <b>Plan Activated Successfully!</b>\n\n"
             "💳 <b>Payment Mode:</b> Ads\n"
-            f"🧾 <b>Payment:</b> {target} Ads\n"
+            f"🧾 <b>Payment:</b> {target} Ad(s)\n"
             f"🕒 <b>Activated On:</b> {now_str}\n"
-            f"⏳ <b>Valid Until:</b> {expiry_date.strftime('%Y-%m-%d %I:%M %p')}\n\n"
+            f"⏳ <b>Valid Until:</b> {expiry_date.strftime('%Y-%m-%d %H:%M')}\n\n"
             "🚀 <b>Features Unlocked:</b>\n"
             "✔️ Unlimited Downloads\n"
             "✔️ Fast Download Speed\n"
@@ -159,7 +153,6 @@ async def resend_ad_action(client, callback_query):
     target = users_db.find_one({"user_id": user_id}).get("ad_progress", {}).get("target", 1)
     await send_next_ad(callback_query.message, user_id, int(callback_query.data.split("_")[2]), target)
 
-# 🌟 FREE & ADS EXPIRY CHECKER (Background Task) 🌟
 async def ads_expiry_checker(client):
     while True:
         try:
@@ -175,4 +168,5 @@ async def ads_expiry_checker(client):
                             await client.send_message(user["user_id"], "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
                         except: pass
         except: pass
-        await asyncio.sleep(3600) # Every 1 hour
+        await asyncio.sleep(3600)
+
