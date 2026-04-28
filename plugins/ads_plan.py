@@ -2,7 +2,7 @@ import random
 import urllib.parse
 import requests
 import asyncio
-from datetime import timedelta, timezone, datetime
+from datetime import datetime, timedelta, timezone
 from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,21 +15,30 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
-    elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
-    else: return ""
+    if plan == "PREMIUM": 
+        return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
+    elif plan == "ADS": 
+        return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
+    else: 
+        return ""
 
-# 🌟 Bulletproof Shortlink Parser (Fixes "Servers are busy" issue) 🌟
-def make_api_request(api_url):
+# 🌟 BULLETPROOF SHORTLINK PARSER (Handles Text & JSON APIs) 🌟
+def fetch_shortlink(api_url):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        res = requests.get(api_url, headers=headers, timeout=10)
+        res = requests.get(api_url, timeout=15)
+        # 1. Try parsing as JSON first
         try:
-            return {"type": "json", "data": res.json()}
-        except Exception:
-            return {"type": "text", "data": res.text.strip()}
-    except Exception as e:
-        return {"type": "error", "data": str(e)}
+            data = res.json()
+            if str(data.get("status")).lower() in ["success", "1", "true"] or "shortenedUrl" in data:
+                return data.get("shortenedUrl") or data.get("short_url") or data.get("url")
+        except ValueError:
+            # 2. If JSON fails, read as pure text (Standard for gplinks, shrinkme, etc.)
+            text_data = res.text.strip()
+            if text_data.startswith("http"):
+                return text_data
+    except Exception:
+        pass
+    return None
 
 async def generate_ad_link(user_id, ad_number):
     bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
@@ -47,21 +56,10 @@ async def generate_ad_link(user_id, ad_number):
         domain, api_key = random.choice(shortener_list)
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
         
-        response = await asyncio.to_thread(make_api_request, api_url)
-        
-        if response["type"] == "json":
-            data = response["data"]
-            if data.get("status") in ["success", 1, "1", True]:
-                return data.get("shortenedUrl") or data.get("short_url") or data.get("url")
-            elif "shortenedUrl" in data:
-                return data["shortenedUrl"]
-            elif "short_url" in data:
-                return data["short_url"]
-        elif response["type"] == "text":
-            text_data = response["data"]
-            if text_data.startswith("http"):
-                return text_data
-                
+        short_url = await asyncio.to_thread(fetch_shortlink, api_url)
+        if short_url:
+            return short_url
+            
     return None
 
 @Client.on_callback_query(filters.regex("show_ads_plan"))
@@ -114,6 +112,7 @@ async def send_next_ad(message, user_id, current_ad_num, target_ads):
             [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], 
             [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
         ])
+        
     try: await message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: pass
 
@@ -151,7 +150,13 @@ async def ad_return_handler(client, message):
     if completed >= target:
         expiry_date = datetime.now(IST) + timedelta(days=days)
         now_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ad(s)"}, "$unset": {"ad_progress": ""}})
+        
+        users_db.update_one(
+            {"user_id": user_id}, 
+            {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ad(s)"}, 
+             "$unset": {"ad_progress": ""}}
+        )
+        
         header = get_header(user_id)
         success_text = (
             f"{header}"
@@ -180,6 +185,7 @@ async def ad_return_handler(client, message):
             [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
         ])
         await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+        
     raise StopPropagation
 
 @Client.on_callback_query(filters.regex(r"^resend_ad_(\d+)$"))
@@ -202,12 +208,12 @@ async def ads_expiry_checker(client):
                     if now >= expiry:
                         users_db.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "FREE"}})
                         try:
-                            await client.send_message(
-                                user["user_id"], 
-                                "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", 
-                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), 
-                                parse_mode=enums.ParseMode.HTML
+                            warn_msg = (
+                                "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\n"
+                                "Your account has been downgraded to the FREE plan. "
+                                "Please upgrade to continue enjoying premium features."
                             )
+                            await client.send_message(user["user_id"], warn_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
                         except: pass
         except: pass
         await asyncio.sleep(3600)
