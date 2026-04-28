@@ -28,6 +28,7 @@ async def generate_ad_link(user_id, ad_number):
     encoded_url = urllib.parse.quote(target_url)
     shorteners = getattr(config, "SHORTENERS", {})
     if not shorteners: return None
+    
     for _ in range(3):
         domain, api_key = random.choice(list(shorteners.items()))
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
@@ -51,11 +52,12 @@ async def show_ads_plan_menu(client, callback_query):
         [InlineKeyboardButton("1 Ad  (0.5 day)", callback_data="select_adplan_1")],
         [InlineKeyboardButton("3 Ads (2 days)", callback_data="select_adplan_3")],
         [InlineKeyboardButton("5 Ads (4 days)", callback_data="select_adplan_5")],
-        [InlineKeyboardButton("7 Ads (9 days)", callback_data="select_adplan_7")],
+        [InlineKeyboardButton(" 7 Ads (9 days)", callback_data="select_adplan_7")],
         [InlineKeyboardButton("10 Ads (2 weeks)", callback_data="select_adplan_10")],
         [InlineKeyboardButton("25 Ads (4 weeks)", callback_data="select_adplan_25")],
         [InlineKeyboardButton("30 Ads (30+2 days)", callback_data="select_adplan_30")],
-        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")]
+        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_to_upgrade_menu")]
     ])
     await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
@@ -77,10 +79,18 @@ async def send_next_ad(message, user_id, current_ad_num, target_ads):
     short_url = await generate_ad_link(user_id, current_ad_num)
     if not short_url:
         text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n❌ <b>Servers are busy!</b> Could not generate ad link. Please click 'Change Link'."
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], 
+            [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
+        ])
     else:
         text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n👉 Click the button below, solve the shortlink, and return to the bot."
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("▶️ Watch Ad Now", url=short_url)], [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("▶️ Watch Ad Now", url=short_url)], 
+            [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], 
+            [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
+        ])
+        
     try: await message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: pass
 
@@ -141,7 +151,11 @@ async def ad_return_handler(client, message):
         await message.reply_text(success_text, parse_mode=enums.ParseMode.HTML)
     else:
         text = f"✅ <b>Ad {completed} completed!</b>\n\n👉 Please continue to Ad {completed + 1}."
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"▶️ Please continue Ad {completed + 1}", callback_data=f"resend_ad_{completed + 1}")], [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{completed + 1}")], [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"▶️ Please continue Ad {completed + 1}", callback_data=f"resend_ad_{completed + 1}")], 
+            [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{completed + 1}")], 
+            [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
+        ])
         await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
     raise StopPropagation
 
@@ -165,7 +179,12 @@ async def ads_expiry_checker(client):
                     if now >= expiry:
                         users_db.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "FREE"}})
                         try:
-                            await client.send_message(user["user_id"], "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+                            await client.send_message(
+                                user["user_id"], 
+                                "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", 
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), 
+                                parse_mode=enums.ParseMode.HTML
+                            )
                         except: pass
         except: pass
         await asyncio.sleep(3600)
