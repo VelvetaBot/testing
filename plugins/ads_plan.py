@@ -2,7 +2,7 @@ import random
 import urllib.parse
 import requests
 import asyncio
-from datetime import timedelta, timezone, datetime
+from datetime import datetime, timedelta, timezone
 from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,13 +15,19 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
-    elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
-    else: return ""
+    if plan == "PREMIUM": 
+        return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
+    elif plan == "ADS": 
+        return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
+    else: 
+        return ""
 
 def fetch_shortlink(api_url):
     try:
-        res = requests.get(api_url, timeout=5)
+        # Increased timeout and added user-agent to prevent blocking
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        res = requests.get(api_url, headers=headers, timeout=10)
+        res.raise_for_status() # Raise an exception for bad status codes
         return res.json()
     except Exception as e:
         return {"error": str(e)}
@@ -30,15 +36,26 @@ async def generate_ad_link(user_id, ad_number):
     bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
     target_url = f"https://t.me/{bot_username}?start=ad_{user_id}_{ad_number}"
     encoded_url = urllib.parse.quote(target_url)
-    shorteners = getattr(config, "SHORTENERS", {})
-    if not shorteners: return None
     
-    for _ in range(3):
-        domain, api_key = random.choice(list(shorteners.items()))
+    shorteners = getattr(config, "SHORTENERS", {})
+    if not shorteners:
+        return None
+        
+    # Attempt up to 5 times across different shorteners
+    shortener_list = list(shorteners.items())
+    for _ in range(5):
+        if not shortener_list:
+            break
+        domain, api_key = random.choice(shortener_list)
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
+        
         data = await asyncio.to_thread(fetch_shortlink, api_url)
-        if data and (data.get("status") == "success" or data.get("status") == 1):
-            return data.get("shortenedUrl")
+        
+        if data and not data.get("error"):
+            # Different shorteners use different success indicators
+            if data.get("status") == "success" or data.get("status") == 1:
+                return data.get("shortenedUrl")
+                
     return None
 
 @Client.on_callback_query(filters.regex("show_ads_plan"))
@@ -48,7 +65,7 @@ async def show_ads_plan_menu(client, callback_query):
     header = get_header(callback_query.from_user.id)
     text = (
         f"{header}"
-        "📦 <b>Please select a plan to continue</b>"
+        "📦 <b>Please select a plan to continue</b>\n\n"
     )
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("1 Ad  (0.5 day)", callback_data="select_adplan_1")],
@@ -85,13 +102,13 @@ async def send_next_ad(message, user_id, current_ad_num, target_ads):
             [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
         ])
     else:
-        text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n👉 Click the button below, solve the shortlink, and return to the bot.\n<i>(Ref: {random.randint(100,999)})</i>"
+        # Added Ref number format as requested previously
+        text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n👉 Click the button below, solve the shortlink, and return to the bot.\n<i>(Ref: {random.randint(100, 999)})</i>"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("▶️ Watch Ad Now", url=short_url)], 
             [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], 
             [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
         ])
-        
     try: await message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
     except MessageNotModified: pass
 
@@ -129,7 +146,7 @@ async def ad_return_handler(client, message):
     if completed >= target:
         expiry_date = datetime.now(IST) + timedelta(days=days)
         now_str = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
-        users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ads"}, "$unset": {"ad_progress": ""}})
+        users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ad(s)"}, "$unset": {"ad_progress": ""}})
         header = get_header(user_id)
         success_text = (
             f"{header}"
@@ -180,7 +197,12 @@ async def ads_expiry_checker(client):
                     if now >= expiry:
                         users_db.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "FREE"}})
                         try:
-                            await client.send_message(user["user_id"], "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+                            await client.send_message(
+                                user["user_id"], 
+                                "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", 
+                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), 
+                                parse_mode=enums.ParseMode.HTML
+                            )
                         except: pass
         except: pass
         await asyncio.sleep(3600)
