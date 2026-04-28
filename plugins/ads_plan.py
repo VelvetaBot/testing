@@ -169,4 +169,3 @@ async def ads_expiry_checker(client):
                         except: pass
         except: pass
         await asyncio.sleep(3600)
-
