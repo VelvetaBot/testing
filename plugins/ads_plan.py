@@ -2,7 +2,7 @@ import random
 import urllib.parse
 import requests
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone, datetime
 from pyrogram import Client, filters, enums, StopPropagation
 from pyrogram.errors import MessageNotModified
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,12 +15,16 @@ IST = timezone(timedelta(hours=5, minutes=30))
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
-    if plan == "PREMIUM": 
-        return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>"
-    elif plan == "ADS": 
-        return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
-    else: 
-        return ""
+    if plan == "PREMIUM": return "<blockquote><b>💎 Velveta Premium User                                                                                                                                                                                                        </b>                                                                                                                    </blockquote>\n"
+    elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
+    else: return ""
+
+def fetch_shortlink(api_url):
+    try:
+        res = requests.get(api_url, timeout=5)
+        return res.json()
+    except Exception as e:
+        return {"error": str(e)}
 
 async def generate_ad_link(user_id, ad_number):
     bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
@@ -32,11 +36,9 @@ async def generate_ad_link(user_id, ad_number):
     for _ in range(3):
         domain, api_key = random.choice(list(shorteners.items()))
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
-        try:
-            res = requests.get(api_url, timeout=5).json()
-            if res and (res.get("status") == "success" or res.get("status") == 1):
-                return res.get("shortenedUrl")
-        except: pass
+        data = await asyncio.to_thread(fetch_shortlink, api_url)
+        if data and (data.get("status") == "success" or data.get("status") == 1):
+            return data.get("shortenedUrl")
     return None
 
 @Client.on_callback_query(filters.regex("show_ads_plan"))
@@ -45,19 +47,18 @@ async def show_ads_plan_menu(client, callback_query):
     except: pass
     header = get_header(callback_query.from_user.id)
     text = (
-        f"{header}\n"
-        "📦 <b>Please select a plan to continue</b>\n\n"
+        f"{header}"
+        "📦 <b>Please select a plan to continue</b>"
     )
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("1 Ad  (0.5 day)", callback_data="select_adplan_1")],
         [InlineKeyboardButton("3 Ads (2 days)", callback_data="select_adplan_3")],
         [InlineKeyboardButton("5 Ads (4 days)", callback_data="select_adplan_5")],
-        [InlineKeyboardButton(" 7 Ads (9 days)", callback_data="select_adplan_7")],
+        [InlineKeyboardButton("7 Ads (9 days)", callback_data="select_adplan_7")],
         [InlineKeyboardButton("10 Ads (2 weeks)", callback_data="select_adplan_10")],
         [InlineKeyboardButton("25 Ads (4 weeks)", callback_data="select_adplan_25")],
         [InlineKeyboardButton("30 Ads (30+2 days)", callback_data="select_adplan_30")],
-        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")],
-        [InlineKeyboardButton("🔙 Back", callback_data="back_to_upgrade_menu")]
+        [InlineKeyboardButton("✅ Completed", callback_data="check_ads_status")]
     ])
     await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
@@ -84,7 +85,7 @@ async def send_next_ad(message, user_id, current_ad_num, target_ads):
             [InlineKeyboardButton("❌ Cancel Plan", callback_data="cancel_ad_plan")]
         ])
     else:
-        text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n👉 Click the button below, solve the shortlink, and return to the bot."
+        text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n👉 Click the button below, solve the shortlink, and return to the bot.\n<i>(Ref: {random.randint(100,999)})</i>"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("▶️ Watch Ad Now", url=short_url)], 
             [InlineKeyboardButton("⚠️ Ad not working (Change Link)", callback_data=f"skip_ad_{current_ad_num}")], 
@@ -131,7 +132,7 @@ async def ad_return_handler(client, message):
         users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ads"}, "$unset": {"ad_progress": ""}})
         header = get_header(user_id)
         success_text = (
-            f"{header}\n"
+            f"{header}"
             "🎉 <b>Plan Activated Successfully!</b>\n\n"
             "💳 <b>Payment Mode:</b> Ads\n"
             f"🧾 <b>Payment:</b> {target} Ad(s)\n"
@@ -179,12 +180,7 @@ async def ads_expiry_checker(client):
                     if now >= expiry:
                         users_db.update_one({"user_id": user["user_id"]}, {"$set": {"plan": "FREE"}})
                         try:
-                            await client.send_message(
-                                user["user_id"], 
-                                "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", 
-                                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), 
-                                parse_mode=enums.ParseMode.HTML
-                            )
+                            await client.send_message(user["user_id"], "⚠️ <b>Alert: Your Ads Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to continue enjoying premium features.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
                         except: pass
         except: pass
         await asyncio.sleep(3600)
