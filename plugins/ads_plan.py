@@ -19,14 +19,17 @@ def get_header(user_id):
     elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>\n"
     else: return ""
 
-def fetch_shortlink(api_url):
+# 🌟 Bulletproof Shortlink Parser (Fixes "Servers are busy" issue) 🌟
+def make_api_request(api_url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         res = requests.get(api_url, headers=headers, timeout=10)
-        res.raise_for_status() 
-        return res.json()
+        try:
+            return {"type": "json", "data": res.json()}
+        except Exception:
+            return {"type": "text", "data": res.text.strip()}
     except Exception as e:
-        return {"error": str(e)}
+        return {"type": "error", "data": str(e)}
 
 async def generate_ad_link(user_id, ad_number):
     bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
@@ -44,11 +47,20 @@ async def generate_ad_link(user_id, ad_number):
         domain, api_key = random.choice(shortener_list)
         api_url = f"https://{domain}/api?api={api_key}&url={encoded_url}"
         
-        data = await asyncio.to_thread(fetch_shortlink, api_url)
+        response = await asyncio.to_thread(make_api_request, api_url)
         
-        if data and not data.get("error"):
-            if data.get("status") == "success" or data.get("status") == 1:
-                return data.get("shortenedUrl")
+        if response["type"] == "json":
+            data = response["data"]
+            if data.get("status") in ["success", 1, "1", True]:
+                return data.get("shortenedUrl") or data.get("short_url") or data.get("url")
+            elif "shortenedUrl" in data:
+                return data["shortenedUrl"]
+            elif "short_url" in data:
+                return data["short_url"]
+        elif response["type"] == "text":
+            text_data = response["data"]
+            if text_data.startswith("http"):
+                return text_data
                 
     return None
 
@@ -142,7 +154,7 @@ async def ad_return_handler(client, message):
         users_db.update_one({"user_id": user_id}, {"$set": {"plan": "ADS", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": f"{target} Ad(s)"}, "$unset": {"ad_progress": ""}})
         header = get_header(user_id)
         success_text = (
-            f"{header}\n"
+            f"{header}"
             "🎉 <b>Plan Activated Successfully!</b>\n\n"
             "💳 <b>Payment Mode:</b> Ads\n"
             f"🧾 <b>Payment:</b> {target} Ad(s)\n"
