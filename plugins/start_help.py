@@ -7,10 +7,8 @@ from database import users_db
 import config
 from datetime import datetime, timezone, timedelta
 
-# IST Setup
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# 🌟 ఫుల్ స్పేస్ & బోల్డ్ బ్రాండింగ్ 🌟
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
     plan = user.get("plan", "FREE")
@@ -51,11 +49,7 @@ async def start_command(client, message):
         f"3️⃣ For more details, send <b>/help</b>"
     )
     
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Join Our Updated Channel 📢", url="https://t.me/Velvetabots")]
-    ])
-    
-    # 🌟 స్టార్ట్ చేయగానే బెదిరించకుండా కేవలం వెల్కమ్ చెప్తుంది 🌟
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Our Updated Channel 📢", url="https://t.me/Velvetabots")]])
     await message.reply_text(welcome_text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.command("help") & filters.private)
@@ -69,14 +63,8 @@ async def help_command(client, message):
         f"🎬 <b>Downloading</b>\n"
         f"👉 Send a YouTube link to download\n"
         f"👉 Select quality and receive your file\n\n"
-        f"⏰ <b>Extra Features</b>\n"
-        f"👉 /schedule – Schedule a YouTube link\n"
-        f"👉 /save – Save a link or video\n"
-        f"👉 /reveal – View saved content\n"
-        f"👉 /delete_save – Delete saved content\n\n"
         f"⚙️ <b>Settings</b>\n"
         f"👉 /set_preferred_quality – Set default quality\n"
-        f"👉 /set_freebot – Select your bot\n"
         f"👉 /wallpaper – Create wallpaper\n\n"
         f"💳 <b>Plans & Account</b>\n"
         f"👉 /upgrade – View & upgrade plans\n"
@@ -89,15 +77,13 @@ async def help_command(client, message):
     )
     await message.reply_text(help_text, parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# 🌟 EXACT MY_PLAN FORMATS YOU REQUESTED 🌟
-# ==========================================
 @Client.on_message(filters.command("my_plan") & filters.private)
 async def my_plan_cmd(client, message):
     user_id = message.from_user.id
     user_data = users_db.find_one({"user_id": user_id})
     plan = user_data.get("plan", "FREE") if user_data else "FREE"
     header = get_header(user_id)
+    now = datetime.now(IST)
 
     if plan == "PREMIUM":
         amount = user_data.get("amount_paid", "N/A")
@@ -143,7 +129,7 @@ async def my_plan_cmd(client, message):
         
         started_str = started.replace(tzinfo=timezone.utc).astimezone(IST).strftime('%Y-%m-%d') if started else "Unknown"
         
-        time_left = expiry.replace(tzinfo=timezone.utc).astimezone(IST) - datetime.now(IST) if expiry else timedelta(0)
+        time_left = expiry.replace(tzinfo=timezone.utc).astimezone(IST) - now if expiry else timedelta(0)
         days, seconds = time_left.days, time_left.seconds
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
@@ -174,7 +160,7 @@ async def my_plan_cmd(client, message):
         await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
     else:
-        started = user_data.get("plan_started") if user_data else "Unknown"
+        started = user_data.get("plan_started", "Unknown") if user_data else "Unknown"
         if isinstance(started, datetime):
             started = started.replace(tzinfo=timezone.utc).astimezone(IST).strftime('%Y-%m-%d')
         
@@ -206,39 +192,70 @@ async def my_plan_cmd(client, message):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]])
         await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# 🌟 GLOBAL FORCE SUB INTERCEPTOR (10 Mins Background Check) 🌟
-# ==========================================
+@Client.on_message(filters.command("reset_me") & filters.private)
+async def reset_me_cmd(client, message):
+    users_db.update_one(
+        {"user_id": message.from_user.id},
+        {"$set": {"plan": "FREE", "trial_claimed": False}, "$unset": {"expiry_date": "", "plan_started": "", "amount_paid": "", "ad_progress": "", "transfer_count": "", "warning_sent": ""}}
+    )
+    await message.reply_text("✅ <b>Account Reset Successfully!</b>\n\nYou are now on the FREE plan.", parse_mode=enums.ParseMode.HTML)
+
+@Client.on_message(filters.command("transfer_premium") & filters.private)
+async def transfer_premium_cmd(client, message):
+    user_id = message.from_user.id
+    user_data = users_db.find_one({"user_id": user_id})
+    plan = user_data.get("plan", "FREE") if user_data else "FREE"
+
+    if plan != "PREMIUM":
+        await message.reply_text("⚠️ <b>Access Denied!</b>\n\nYou must be a Premium user to transfer your plan.\n\n👉 Click the button below to upgrade.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade Now", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+        return
+
+    transfer_count = user_data.get("transfer_count", 0)
+    if transfer_count >= 3:
+        await message.reply_text("❌ <b>Transfer Limit Reached!</b>\n\nYou can only transfer your premium plan a maximum of 3 times.", parse_mode=enums.ParseMode.HTML)
+        return
+
+    args = message.text.split()
+    if len(args) != 3:
+        await message.reply_text("<b>⚠️ Usage:</b>\n<code>/transfer_premium {Your_User_Id} {Target_User_Id}</code>\n\n<i>Note: You can transfer your plan only 3 times.</i>\n\n<b>Example:</b>\n<code>/transfer_premium 883128927 123456789</code>", parse_mode=enums.ParseMode.HTML)
+        return
+
+    try:
+        sender_id = int(args[1])
+        target_id = int(args[2])
+        if sender_id != user_id:
+            await message.reply_text("❌ Please provide YOUR correct User ID as the first argument.", parse_mode=enums.ParseMode.HTML)
+            return
+
+        expiry = user_data.get("expiry_date")
+        started = user_data.get("plan_started")
+        amount = user_data.get("amount_paid", "Transferred")
+
+        users_db.update_one({"user_id": target_id}, {"$set": {"plan": "PREMIUM", "expiry_date": expiry, "plan_started": started, "amount_paid": f"{amount} (Transferred)"}}, upsert=True)
+        users_db.update_one({"user_id": user_id}, {"$set": {"plan": "FREE", "transfer_count": transfer_count + 1}, "$unset": {"expiry_date": "", "plan_started": "", "amount_paid": ""}})
+
+        await message.reply_text(f"✅ <b>Transfer Successful!</b>\n\nYour Premium plan has been transferred to User ID: <code>{target_id}</code>\nTransfers left: {2 - transfer_count}", parse_mode=enums.ParseMode.HTML)
+        await client.send_message(target_id, "🎉 <b>Congratulations!</b>\nA Premium plan has been transferred to your account.", parse_mode=enums.ParseMode.HTML)
+    except Exception as e:
+        await message.reply_text(f"❌ Error: Invalid IDs provided. {e}", parse_mode=enums.ParseMode.HTML)
+
 @Client.on_message(filters.incoming & filters.private & ~filters.command(["start"]), group=-9)
 async def force_sub_interceptor(client, message):
     user_id = message.from_user.id
-    
-    if await check_joined(client, user_id):
-        return # యూజర్ జాయిన్ అయితే వేరే బాట్ ఫైల్స్ కి మెసేజ్ ని పంపిస్తుంది
+    if await check_joined(client, user_id): return
         
-    # జాయిన్ అవ్వకపోతే మెసేజ్ ని పట్టుకుంటుంది
     text = "⛔️ <b>Access Denied</b> ⛔️\n\n🙋‍♂️ Hey User, You Must Join <b>@Velvetabots</b> Telegram Channel To Use This BOT. So, Please Join it 🤗. Thank You 🤝"
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Join Update Channel", url="https://t.me/Velvetabots")], 
-        [InlineKeyboardButton("☑️ Joined", callback_data="force_sub_joined")]
-    ])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Join Update Channel", url="https://t.me/Velvetabots")], [InlineKeyboardButton("☑️ Joined", callback_data="force_sub_joined")]])
     
     sent_msg = await message.reply_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
-    
-    # బాట్ ప్రాసెస్ ని ఇక్కడే ఆపేస్తుంది (వేరే ఫైల్స్ కి వెళ్లనివ్వదు)
     message.stop_propagation()
 
-    # 🌟 10 నిమిషాల ఆటో చెక్కర్ (యూజర్ జాయిన్ అవ్వగానే వెంటనే స్టార్ట్ చేస్తుంది) 🌟
     for _ in range(600):
         await asyncio.sleep(1)
         if await check_joined(client, user_id):
             try: await sent_msg.delete()
             except: pass
-            
-            # యూజర్ ఏ లింక్/కమాండ్ పెట్టాడో దాన్ని ఆటోమేటిక్ గా రన్ చేస్తుంది
             from plugins.engine import text_handler
-            if "youtube.com" in message.text or "youtu.be" in message.text:
-                await text_handler(client, message)
-            else:
-                await message.reply_text("✅ <b>Verified!</b> You can now use the bot.")
+            if "youtube.com" in message.text or "youtu.be" in message.text: await text_handler(client, message)
+            else: await message.reply_text("✅ <b>Verified!</b> You can now use the bot.")
             return
