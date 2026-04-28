@@ -450,7 +450,7 @@ async def start_download_process(client, event, quality, url):
         log_bot_problem(str(e), "engine.py - Upload Stage")
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
 
-@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_pref_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot"]))
+@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_preferred_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot", "upgrade", "my_plan", "reset_me", "transfer_premium"]))
 async def text_handler(client, message):
     yt_id = extract_yt_id(message.text)
     if yt_id:
