@@ -19,7 +19,6 @@ def get_header(user_id):
     else: 
         return ""
 
-# Payment APIs
 def create_nowpayments_invoice(data, headers):
     try: return requests.post("https://api.nowpayments.io/v1/invoice", json=data, headers=headers, timeout=10).json()
     except Exception as e: return {"error": str(e)}
@@ -42,25 +41,19 @@ def check_cashfree_status(link_id):
     except Exception as e: return {"error": str(e)}
 
 # ==========================================
-# COMMANDS: /upgrade & /reset_me
+# COMMANDS
 # ==========================================
 @Client.on_message(filters.command("upgrade") & filters.private)
 async def upgrade_cmd(client, message):
     user_data = users_db.find_one({"user_id": message.from_user.id})
     if user_data and user_data.get("plan", "FREE") != "FREE":
-        expiry = user_data.get("expiry_date")
-        if expiry:
-            if expiry.tzinfo is None:
-                expiry = expiry.replace(tzinfo=timezone.utc).astimezone(IST)
-            if expiry > datetime.now(IST):
-                await message.reply_text("⚠️ <b>You already have an active plan!</b>\n\n👉 Send /my_plan to check your details.", parse_mode=enums.ParseMode.HTML)
-                return
+        await message.reply_text("⚠️ <b>You already have an active plan!</b>\n\n<i>Note: Upgrading now will overwrite your current plan.</i>", parse_mode=enums.ParseMode.HTML)
                 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Ads 📺", callback_data="show_ads_plan")], 
         [InlineKeyboardButton("Money 💰", callback_data="show_money_plan")]
     ])
-    await message.reply_text("<b>💳 Choose a payment method: Money or Ads</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+    await message.reply_text("<b>💳 Choose a payment method:</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_message(filters.command("reset_me") & filters.private)
 async def reset_me_cmd(client, message):
@@ -70,23 +63,17 @@ async def reset_me_cmd(client, message):
     )
     await message.reply_text("✅ <b>Account Reset Successfully!</b>\n\nYou are now on the FREE plan and trial lock is removed.", parse_mode=enums.ParseMode.HTML)
 
-# ==========================================
-# MENUS
-# ==========================================
 @Client.on_callback_query(filters.regex("^show_upgrade$") | filters.regex("^back_to_upgrade_menu$"))
 async def upgrade_callback(client, callback_query):
     try: await callback_query.answer() 
     except: pass
     user_data = users_db.find_one({"user_id": callback_query.from_user.id})
     if user_data and user_data.get("plan", "FREE") != "FREE":
-        expiry = user_data.get("expiry_date")
-        if expiry:
-            if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=timezone.utc).astimezone(IST)
-            if expiry > datetime.now(IST):
-                await callback_query.message.edit_text("⚠️ <b>You already have an active plan!</b>\n\n👉 Send /my_plan to check your details.", parse_mode=enums.ParseMode.HTML)
-                return
+        await callback_query.message.edit_text("⚠️ <b>You already have an active plan!</b>\n\n<i>Note: Upgrading now will overwrite your current plan.</i>\n\n<b>💳 Choose a payment method:</b>", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Ads 📺", callback_data="show_ads_plan")], [InlineKeyboardButton("Money 💰", callback_data="show_money_plan")]]), parse_mode=enums.ParseMode.HTML)
+        return
+                
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Ads 📺", callback_data="show_ads_plan")], [InlineKeyboardButton("Money 💰", callback_data="show_money_plan")]])
-    await callback_query.message.edit_text("<b>💳 Choose a payment method: Money or Ads</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+    await callback_query.message.edit_text("<b>💳 Choose a payment method:</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
 @Client.on_callback_query(filters.regex("show_money_plan"))
 async def money_plan_details(client, callback_query):
@@ -126,12 +113,12 @@ async def money_plan_details(client, callback_query):
 @Client.on_callback_query(filters.regex("pay_upi"))
 async def upi_plans(client, callback_query):
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("₹29 (1 week)", callback_data="gencf_29_7")],
-        [InlineKeyboardButton("₹89 (3 weeks)", callback_data="gencf_89_21")],
-        [InlineKeyboardButton("₹125 (1 month)", callback_data="gencf_125_30")],
-        [InlineKeyboardButton("₹379 (3 months)", callback_data="gencf_379_90")],
-        [InlineKeyboardButton("₹755 (6 months)", callback_data="gencf_755_180")],
-        [InlineKeyboardButton("₹1519 (365+2 days)", callback_data="gencf_1519_367")],
+        [InlineKeyboardButton("₹29(1 week)", callback_data="gencf_29_7")],
+        [InlineKeyboardButton("₹89(3 weeks)", callback_data="gencf_89_21")],
+        [InlineKeyboardButton("₹125(1 month)", callback_data="gencf_125_30")],
+        [InlineKeyboardButton("₹379(3 months)", callback_data="gencf_379_90")],
+        [InlineKeyboardButton("₹755(6 months)", callback_data="gencf_755_180")],
+        [InlineKeyboardButton("₹1519(365+2days)", callback_data="gencf_1519_367")],
         [InlineKeyboardButton("✅ Completed", callback_data="check_man_pay")],
         [InlineKeyboardButton("🔙 Back", callback_data="show_money_plan")]
     ])
@@ -169,9 +156,6 @@ async def stars_plans(client, callback_query):
 async def check_man_pay(client, callback_query):
     await callback_query.answer("Status: Processing automatically. Contact Support if failed.", show_alert=True)
 
-# ==========================================
-# PAYMENT GENERATORS & LISTENERS
-# ==========================================
 @Client.on_callback_query(filters.regex(r"^gencf_(\d+)_(\d+)$"))
 async def generate_cashfree_invoice(client, callback_query):
     try:
@@ -233,9 +217,6 @@ async def payment_success(client, message):
             await activate_money_plan(client, user_id, f"⭐ {amount} Stars", days)
     except: pass
 
-# ==========================================
-# AUTO VERIFIERS
-# ==========================================
 async def auto_verify_crypto_payment(client, chat_id, message_id, invoice_id, days, amount_usd, user_id):
     headers = {"x-api-key": getattr(config, "NOWPAYMENTS_API_KEY", "")}
     for _ in range(200):
@@ -268,9 +249,6 @@ async def auto_delete_stars_invoice(client, chat_id, message_id):
         await client.send_message(chat_id, "⏳ <b>Invoice Expired</b>\n\nStars payment link expired.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
     except: pass
 
-# ==========================================
-# PLAN ACTIVATOR & EXPIRY CHECKER
-# ==========================================
 async def activate_money_plan(client, user_id, amount, days):
     expiry_date = datetime.now(IST) + timedelta(days=days)
     now_str = datetime.now(IST).strftime('%Y-%m-%d %I:%M %p')
@@ -308,6 +286,7 @@ async def activate_money_plan(client, user_id, amount, days):
     )
     await client.send_message(user_id, success_text, parse_mode=enums.ParseMode.HTML)
 
+# 🌟 MONEY PLAN EXPIRY WARNING & REMOVAL (1-Day Reminder) 🌟
 async def money_expiry_checker(client):
     while True:
         try:
@@ -319,7 +298,6 @@ async def money_expiry_checker(client):
                 if expiry:
                     if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=timezone.utc).astimezone(IST)
                     
-                    # 1 Day Expiry Warning
                     time_left = expiry - now
                     if timedelta(hours=23) <= time_left <= timedelta(hours=25) and not user.get("warning_sent"):
                         try:
