@@ -16,68 +16,224 @@ def get_header(user_id):
     elif plan == "ADS": return "<blockquote><b> 📺 Velveta Semi Premium User                                                                                                                                                                                                                                                                             </b>                                                                                                                                                   </blockquote>"
     else: return ""
 
+# APIs
+def create_nowpayments_invoice(data, headers):
+    try: return requests.post("https://api.nowpayments.io/v1/invoice", json=data, headers=headers, timeout=10).json()
+    except Exception as e: return {"error": str(e)}
+
+def check_nowpayments_invoice(invoice_id, headers):
+    try: return requests.get(f"https://api.nowpayments.io/v1/invoice/{invoice_id}", headers=headers, timeout=10).json()
+    except Exception as e: return {"error": str(e)}
+
+def create_cashfree_link(amount, user_id):
+    url = "https://sandbox.cashfree.com/pg/links"
+    headers = {"accept": "application/json", "content-type": "application/json", "x-api-version": "2023-08-01", "x-client-id": getattr(config, "CASHFREE_APP_ID", ""), "x-client-secret": getattr(config, "CASHFREE_SECRET_KEY", "")}
+    payload = {"link_id": f"order_{user_id}_{int(time.time())}", "link_amount": float(amount), "link_currency": "INR", "link_purpose": "Velveta Premium Bot Subscription", "customer_details": {"customer_phone": "9999999999", "customer_name": f"User_{user_id}"}, "link_notify": {"send_sms": False, "send_email": False}}
+    try: return requests.post(url, json=payload, headers=headers, timeout=10).json()
+    except Exception as e: return {"error": str(e)}
+
+def check_cashfree_status(link_id):
+    url = f"https://sandbox.cashfree.com/pg/links/{link_id}"
+    headers = {"accept": "application/json", "x-api-version": "2023-08-01", "x-client-id": getattr(config, "CASHFREE_APP_ID", ""), "x-client-secret": getattr(config, "CASHFREE_SECRET_KEY", "")}
+    try: return requests.get(url, headers=headers, timeout=10).json()
+    except Exception as e: return {"error": str(e)}
+
+# --- MONEY MENUS ---
 @Client.on_callback_query(filters.regex("show_money_plan"))
 async def money_plan_details(client, callback_query):
+    try: await callback_query.answer()
+    except: pass
     header = get_header(callback_query.from_user.id)
     text = (
         f"{header}\n"
         "<b>🔸 Money Plan</b>\n"
         "━━━━━━━━━━━━━━\n"
         "🚀 <b>Features:</b>\n"
-        "✔️ 15+2🆓 Tasks\n"
-        "✔️ A to B forwarding System\n"
-        "✔️ Auto forwarding enabled\n"
-        "✔️ Header control\n"
-        "✔️ Media forwarding\n"
-        "✔️ Link preview\n"
-        "✔️ Auto Delete Messages\n"
-        "✔️ Remove Usernames\n"
-        "✔️ Remove Links\n"
-        "✔️ Mono Text ON/OFF\n"
-        "✔️ Link Auto Replies\n"
-        "✔️ Disable Hidden Links\n"
-        "✔️ Add Blacklist Keywords\n"
-        "✔️ Add Whitelist Keywords\n"
-        "✔️ Add Header Text\n"
-        "✔️ Add Footer Text\n"
-        "✔️ Replace Usernames\n"
-        "✔️ Replace words (Text)\n"
-        "✔️ Trim single Words/Lines\n"
-        "✔️ Transfer of Premium\n"
-        "✔️ Replace Links\n"
-        "✔️ Amazon Links Converter\n"
-        "✔️ Delay Timer For Targets\n"
-        "✔️ Forward Restricted Content\n"
-        "✔️ Unlimited forwards/day\n"
-        "✔️ Anti-Ban Speed Forwarding\n"
+        "✔️ Unlimited Downloads\n"
+        "✔️ Playlist Downloads\n"
+        "✔️ Fast Download Speed\n"
         "✔️ High Priority Support\n"
-        "✔️ Fast delivery 💬\n\n"
+        "✔️ Premium Banner Access\n"
+        "✔️ Scheduled Downloads\n"
+        "✔️ Save Videos\n"
+        "✔️ Transfer Premium\n"
+        "✔️ Multi-Platform Access\n"
+        "✔️ Anti Crash Protection\n"
+        "✔️ Auto Repair Link\n"
+        "✔️ Wallpaper Setup\n"
+        "✔️ Advanced Content Downloads\n"
+        "✔️ Quality Selection\n"
+        "✔️ Set Preferred Quality\n\n"
         "<b>Select Your Payment Method 👇</b>"
     )
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("Pay with UPI 💳", callback_data="pay_upi")], 
         [InlineKeyboardButton("Pay with crypto 🪙", callback_data="pay_crypto")], 
-        [InlineKeyboardButton("Pay with ⭐ Stars", callback_data="pay_stars")], 
+        [InlineKeyboardButton("Pay with ⭐Telegram Stars", callback_data="pay_stars")], 
         [InlineKeyboardButton("🔙 Back", callback_data="back_to_upgrade_menu")]
     ])
     await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
 
-# నోట్: ఇక్కడ పేమెంట్ వెరిఫికేషన్ లాజిక్ పాత కోడ్ లాగే ఉంటుంది.
-# ప్లాన్ ఆక్టివేట్ అయినప్పుడు కింది మెసేజ్ వచ్చేలా మార్చాను:
+# 🌟 EXACT UPI PRICES 🌟
+@Client.on_callback_query(filters.regex("pay_upi"))
+async def upi_plans(client, callback_query):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("₹29 (1 week)", callback_data="gencf_29_7")],
+        [InlineKeyboardButton("₹89 (3 weeks)", callback_data="gencf_89_21")],
+        [InlineKeyboardButton("₹125 (1 month)", callback_data="gencf_125_30")],
+        [InlineKeyboardButton("₹379 (3 months)", callback_data="gencf_379_90")],
+        [InlineKeyboardButton("₹755 (6 months)", callback_data="gencf_755_180")],
+        [InlineKeyboardButton("₹1519 (365+2 days)", callback_data="gencf_1519_367")],
+        [InlineKeyboardButton("✅ Completed", callback_data="check_man_pay")],
+        [InlineKeyboardButton("🔙 Back", callback_data="show_money_plan")]
+    ])
+    await callback_query.message.edit_text("<b>📦 Please select a plan to continue</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+
+# 🌟 EXACT CRYPTO PRICES 🌟
+@Client.on_callback_query(filters.regex("pay_crypto"))
+async def crypto_plans(client, callback_query):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💲0.5 USDT (1 week)", callback_data="cryptoinv_0.5_7")],
+        [InlineKeyboardButton("💲1.00 USDT (2 weeks)", callback_data="cryptoinv_1.0_14")],
+        [InlineKeyboardButton("💲1.50 USDT (1 month)", callback_data="cryptoinv_1.5_30")],
+        [InlineKeyboardButton("💲4.50 USDT (3 months)", callback_data="cryptoinv_4.5_90")],
+        [InlineKeyboardButton("💲9.00 USDT (6 months)", callback_data="cryptoinv_9.0_180")],
+        [InlineKeyboardButton("💲18.00 USDT (365+2 days)", callback_data="cryptoinv_18.0_367")],
+        [InlineKeyboardButton("✅ Completed", callback_data="check_man_pay")],
+        [InlineKeyboardButton("🔙 Back", callback_data="show_money_plan")]
+    ])
+    await callback_query.message.edit_text("<b>📦 Please select a plan to continue</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+
+# 🌟 EXACT STARS PRICES 🌟
+@Client.on_callback_query(filters.regex("pay_stars"))
+async def stars_plans(client, callback_query):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐ 35 Stars (1 week)", callback_data="starinv_35_7")],
+        [InlineKeyboardButton("⭐ 110 Stars (3 weeks)", callback_data="starinv_110_21")],
+        [InlineKeyboardButton("⭐ 150 Stars (1 month)", callback_data="starinv_150_30")],
+        [InlineKeyboardButton("⭐ 460 Stars (3 months)", callback_data="starinv_460_90")],
+        [InlineKeyboardButton("⭐ 910 Stars (6 months)", callback_data="starinv_910_180")],
+        [InlineKeyboardButton("⭐ 1830 Stars (365+2 days)", callback_data="starinv_1830_367")],
+        [InlineKeyboardButton("✅ Completed", callback_data="check_man_pay")],
+        [InlineKeyboardButton("🔙 Back", callback_data="show_money_plan")]
+    ])
+    await callback_query.message.edit_text("<b>📦 Please select a plan to continue</b>", reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+
+@Client.on_callback_query(filters.regex("check_man_pay"))
+async def check_man_pay(client, callback_query):
+    await callback_query.answer("📩 Status: Processing automatically. Contact Support if failed.", show_alert=True)
+
+# 🌟 PAYMENT GENERATORS & STRICT WARNINGS 🌟
+@Client.on_callback_query(filters.regex(r"^gencf_(\d+)_(\d+)$"))
+async def generate_cashfree_invoice(client, callback_query):
+    try:
+        await callback_query.answer("⏳ Generating Secure Payment Link...", show_alert=False)
+        amount = int(callback_query.data.split("_")[1])
+        days = int(callback_query.data.split("_")[2])
+        user_id = callback_query.from_user.id
+        res = await asyncio.to_thread(create_cashfree_link, amount, user_id)
+        if "link_url" in res:
+            text = f"🧾 <b>UPI Payment Link Generated</b>\n\n📦 <b>Plan:</b> {days} Days\n💰 <b>Amount:</b> ₹{amount}\n\n⚠️ <b>NOTE: Once payment is done, no plan changes or refunds are allowed! (ఒక్కసారి పేమెంట్ అయిపోయిన తర్వాత ప్లాన్ మార్చడానికి కుదరదు).</b>\n\n👉 Click 'Pay Now' to complete your payment securely.\n⚠️ <i>Link expires in 10 minutes.</i>"
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💳 Pay Now", url=res["link_url"])], [InlineKeyboardButton("🔙 Cancel", callback_data="pay_upi")]])
+            sent_msg = await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            asyncio.create_task(auto_verify_upi_payment(client, callback_query.message.chat.id, sent_msg.id, res["link_id"], days, amount, user_id))
+        else: await callback_query.message.edit_text(f"❌ Failed: {res.get('message', 'API Error')}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="pay_upi")]]))
+    except Exception as e: await callback_query.message.edit_text(f"❌ Error: {e}")
+
+@Client.on_callback_query(filters.regex(r"^cryptoinv_([\d.]+)_(\d+)$"))
+async def generate_nowpayments_invoice(client, callback_query):
+    try: 
+        await callback_query.answer("⏳ Generating Invoice...", show_alert=False)
+        amount_usd = float(callback_query.data.split("_")[1])
+        days = int(callback_query.data.split("_")[2])
+        user_id = callback_query.from_user.id
+        api_key = getattr(config, "NOWPAYMENTS_API_KEY", "")
+        headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+        data = {"price_amount": amount_usd, "price_currency": "usd", "order_description": f"Premium {days} Days"}
+        res = await asyncio.to_thread(create_nowpayments_invoice, data, headers)
+        if res.get("invoice_url"):
+            text = f"🧾 <b>Crypto Invoice Generated</b>\n\n📦 <b>Plan:</b> {days} Days\n💰 <b>Amount:</b> ${amount_usd} USD\n\n⚠️ <b>NOTE: Once payment is done, no plan changes or refunds are allowed! (ఒక్కసారి పేమెంట్ అయిపోయిన తర్వాత ప్లాన్ మార్చడానికి కుదరదు).</b>\n\n👉 Click 'Pay Now'. Use TRX, LTC or DOGE for low fees.\n⚠️ <i>Link expires in 10 minutes.</i>"
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💳 Pay Now", url=res["invoice_url"])], [InlineKeyboardButton("🔙 Cancel", callback_data="pay_crypto")]])
+            sent_msg = await callback_query.message.edit_text(text, reply_markup=keyboard, parse_mode=enums.ParseMode.HTML)
+            asyncio.create_task(auto_verify_crypto_payment(client, callback_query.message.chat.id, sent_msg.id, res["id"], days, amount_usd, user_id))
+        else: await callback_query.message.edit_text(f"❌ Failed: {res.get('message', 'API Error')}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="pay_crypto")]]))
+    except Exception as e: await callback_query.message.edit_text(f"❌ Error: {e}")
+
+@Client.on_callback_query(filters.regex(r"^starinv_(\d+)_(\d+)$"))
+async def send_star_invoice(client, callback_query):
+    try:
+        amount = int(callback_query.data.split("_")[1])
+        days = int(callback_query.data.split("_")[2])
+        url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/sendInvoice"
+        payload = {"chat_id": callback_query.from_user.id, "title": "Velveta Premium 💎", "description": f"Upgrade ({amount} Stars for {days} Days)\n⚠️ Note: No changes allowed after payment.", "payload": f"premium_stars_{amount}_{days}", "provider_token": "", "currency": "XTR", "prices": [{"label": "Premium", "amount": amount}]}
+        res = requests.post(url, json=payload).json()
+        await callback_query.answer("📨 Invoice sent!", show_alert=False)
+        if res.get("ok"):
+            msg_id = res["result"]["message_id"]
+            asyncio.create_task(auto_delete_stars_invoice(client, callback_query.message.chat.id, msg_id))
+    except: pass
+
+@Client.on_message(filters.create(lambda _, __, message: bool(getattr(message, "successful_payment", None))))
+async def payment_success(client, message):
+    try:
+        user_id = message.from_user.id
+        payload = message.successful_payment.invoice_payload
+        if payload.startswith("premium_stars_"):
+            parts = payload.split("_")
+            amount = parts[2]
+            days = int(parts[3])
+            await activate_money_plan(client, user_id, f"{amount} ⭐", days)
+    except: pass
+
+async def auto_verify_crypto_payment(client, chat_id, message_id, invoice_id, days, amount_usd, user_id):
+    headers = {"x-api-key": getattr(config, "NOWPAYMENTS_API_KEY", "")}
+    for _ in range(200): # 10 mins
+        await asyncio.sleep(3)
+        res = await asyncio.to_thread(check_nowpayments_invoice, invoice_id, headers)
+        if res.get("payment_status") in ["finished", "completed", "confirming", "sending"]:
+            await activate_money_plan(client, user_id, f"${amount_usd} Crypto", days)
+            try: await client.delete_messages(chat_id, message_id)
+            except: pass
+            return
+    try:
+        await client.edit_message_text(chat_id, message_id, "⏳ <b>Invoice Expired</b>\n\nPayment link expired.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+    except: pass
+
+async def auto_verify_upi_payment(client, chat_id, message_id, link_id, days, amount_inr, user_id):
+    for _ in range(200): # 10 mins
+        await asyncio.sleep(3)
+        res = await asyncio.to_thread(check_cashfree_status, link_id)
+        if res.get("link_status") == "PAID":
+            await activate_money_plan(client, user_id, f"₹{amount_inr} UPI", days)
+            try: await client.delete_messages(chat_id, message_id)
+            except: pass
+            return
+    try:
+        await client.edit_message_text(chat_id, message_id, "⏳ <b>Invoice Expired</b>\n\nPayment link expired.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+    except: pass
+
+async def auto_delete_stars_invoice(client, chat_id, message_id):
+    await asyncio.sleep(600)
+    try:
+        await client.delete_messages(chat_id, message_id)
+        await client.send_message(chat_id, "⏳ <b>Invoice Expired</b>\n\nStars payment link expired.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+    except: pass
 
 async def activate_money_plan(client, user_id, amount, days):
     expiry_date = datetime.now(IST) + timedelta(days=days)
     now_str = datetime.now(IST).strftime('%Y-%m-%d %I:%M %p')
-    users_db.update_one({"user_id": user_id}, {"$set": {"plan": "PREMIUM", "expiry_date": expiry_date, "plan_started": datetime.now(IST)}})
+    expiry_str = expiry_date.strftime('%Y-%m-%d %I:%M %p')
+    
+    users_db.update_one({"user_id": user_id}, {"$set": {"plan": "PREMIUM", "expiry_date": expiry_date, "plan_started": datetime.now(IST), "amount_paid": amount, "warning_sent": False}})
     
     header = get_header(user_id)
     success_text = (
-        f"{header}\n\n"
+        f"{header}\n"
         "🎉 <b>Plan Activated Successfully!</b>\n\n"
         "💳 <b>Payment Mode:</b> Money\n"
-        f"🧾 <b>Amount Paid:</b> ₹{amount}\n"
+        f"🧾 <b>Amount Paid:</b> {amount}\n"
         f"🕒 <b>Activated On:</b> {now_str}\n"
-        f"⏳ <b>Valid Until:</b> {expiry_date.strftime('%Y-%m-%d %I:%M %p')}\n\n"
+        f"⏳ <b>Valid Until:</b> {expiry_str}\n\n"
         "🚀 <b>Features Unlocked:</b>\n"
         "✔️ Unlimited Downloads\n"
         "✔️ Playlist Downloads\n"
@@ -87,7 +243,7 @@ async def activate_money_plan(client, user_id, amount, days):
         "✔️ Scheduled Downloads\n"
         "✔️ Save Videos\n"
         "✔️ Transfer Premium\n"
-        "✔️ Multi-Platform Access (YT, TikTok, Instagram)\n"
+        "✔️ Multi-Platform Access\n"
         "✔️ Anti Crash Protection\n"
         "✔️ Auto Repair Link\n"
         "✔️ Wallpaper Setup\n"
@@ -99,3 +255,33 @@ async def activate_money_plan(client, user_id, amount, days):
         "👉 Use /my_plan to check details anytime"
     )
     await client.send_message(user_id, success_text, parse_mode=enums.ParseMode.HTML)
+
+# 🌟 MONEY PLAN EXPIRY WARNING & REMOVAL (Background Task) 🌟
+async def money_expiry_checker(client):
+    while True:
+        try:
+            users = users_db.find({"plan": "PREMIUM"})
+            now = datetime.now(IST)
+            for user in users:
+                expiry = user.get("expiry_date")
+                user_id = user["user_id"]
+                if expiry:
+                    if expiry.tzinfo is None: expiry = expiry.replace(tzinfo=timezone.utc).astimezone(IST)
+                    
+                    # 1 Day Warning Logic
+                    time_left = expiry - now
+                    if timedelta(hours=23) <= time_left <= timedelta(hours=25) and not user.get("warning_sent"):
+                        try:
+                            warn_msg = f"⚠️ <b>Reminder!</b>\n\nYour Premium Plan is expiring in exactly <b>1 Day</b> (on {expiry.strftime('%Y-%m-%d %I:%M %p')}).\n\nPlease renew your plan to continue enjoying uninterrupted premium features."
+                            await client.send_message(user_id, warn_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Renew Plan", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+                            users_db.update_one({"user_id": user_id}, {"$set": {"warning_sent": True}})
+                        except: pass
+                    
+                    # Exact Expiry Logic
+                    if now >= expiry:
+                        users_db.update_one({"user_id": user_id}, {"$set": {"plan": "FREE"}, "$unset": {"warning_sent": ""}})
+                        try:
+                            await client.send_message(user_id, "⚠️ <b>Alert: Your Premium Plan has Expired!</b>\n\nYour account has been downgraded to the FREE plan. Please upgrade to regain your features.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="show_upgrade")]]), parse_mode=enums.ParseMode.HTML)
+                        except: pass
+        except: pass
+        await asyncio.sleep(3600) # Every 1 hour
