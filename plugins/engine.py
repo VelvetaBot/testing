@@ -20,7 +20,7 @@ from plugins.cookie_manager import get_working_cookie_file
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
 
-# 🌟 LOGGING SETUP 🌟
+# LOGGING SETUP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,9 @@ def get_highest_available_format(url, proxy=None):
 
     return max(available_res) if available_res else 0
 
+# ==========================================
+# PERFECT FALLBACK ROUTING
+# ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
@@ -109,8 +112,6 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     else: res_list = [r for r in [2160, 1440, 1080, 720, 480, 360] if r <= req_res]
 
     file_path = None
-    v_width = 0
-    v_height = 0
     v_duration = 0
     download_success = False
 
@@ -120,8 +121,11 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
         if current_res == 0:
             format_str = 'bestaudio/best'
         else:
-            if is_short: format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
-            else: format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
+            if is_short:
+                # Forces yt-dlp to grab vertical format, rejecting padded horizontal versions
+                format_str = f'bestvideo[width<={current_res}]+bestaudio/best'
+            else:
+                format_str = f'bestvideo[height<={current_res}]+bestaudio/best'
 
         def try_ytdlp(client_type):
             for attempt in range(5):
@@ -139,36 +143,27 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
-                        dl_w = info.get('width') or 0
-                        dl_h = info.get('height') or 0
-                        if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
-                        if dl_w == 0 or dl_h == 0:
-                            if is_short:
-                                dl_w = current_res if current_res > 0 else 720
-                                dl_h = int(dl_w * 16 / 9)
-                            else:
-                                dl_h = current_res if current_res > 0 else 720
-                                dl_w = int(dl_h * 16 / 9)
 
                         if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                        return fname, dl_w, dl_h, info.get('duration', 0)
-                except Exception as e: logger.error(f"YTDLP Attempt Failed: {str(e)}")
+                        return fname, info.get('duration', 0)
+                except Exception as e:
+                    logger.error(f"YTDLP {client_type} Attempt {attempt} Failed: {str(e)}")
             return None
 
         res = try_ytdlp(None)
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('android')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('ios')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         res = try_ytdlp('tv')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
         
         res = try_ytdlp('web')
-        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
+        if res: file_path, v_duration = res; download_success = True; break
 
         try:
             yt = PyTubeFixDL(url)
@@ -176,15 +171,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
-                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    dl_w = current_res if is_short else int(current_res * 16 / 9)
-                    dl_h = int(current_res * 16 / 9) if is_short else current_res
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
         except Exception as e: logger.error(f"PyTubeFix Failed: {e}")
         if download_success: break
@@ -195,15 +188,13 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pt.mp3")
-                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-                    dl_w = current_res if is_short else int(current_res * 16 / 9)
-                    dl_h = int(current_res * 16 / 9) if is_short else current_res
-                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
+                    file_path, v_duration = fname, yt.length
                     download_success = True
         except Exception as e: logger.error(f"PyTube Failed: {e}")
         if download_success: break
@@ -219,16 +210,9 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 fname = ydl.prepare_filename(info)
-                
-                dl_w = info.get('width') or 0
-                dl_h = info.get('height') or 0
-                if is_short and dl_w > dl_h: dl_w, dl_h = dl_h, dl_w
-                if dl_w == 0 or dl_h == 0:
-                    dl_w = current_res if is_short else int(current_res * 16 / 9)
-                    dl_h = int(current_res * 16 / 9) if is_short else current_res
 
                 if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
+                file_path, v_duration = fname, info.get('duration', 0)
                 download_success = True
         except Exception as e: logger.error(f"YoutubeDL Failed: {e}")
         if download_success: break
@@ -236,7 +220,7 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not download_success:
         raise Exception("All Qualities and Clients Exhausted")
 
-    return file_path, v_width, v_height, v_duration
+    return file_path, v_duration
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -354,9 +338,7 @@ async def start_download_process(client, event, quality, url):
     user = users_db.find_one({"user_id": user_id}) or {}
     proxy = user.get("proxy")
     
-    # 🌟 SHORTS ASPECT RATIO FIX 🌟
     is_short = "shorts" in url.lower()
-    
     reply_to_id = event.message.reply_to_message_id if event.message.reply_to_message else event.message.id
     sent_msg = event.message
 
@@ -377,7 +359,7 @@ async def start_download_process(client, event, quality, url):
                 final_thumb = yt_thumb_path
             except Exception as e: logger.error(f"Thumbnail Error: {e}")
 
-        # 🌟 SHORTS కి వాల్‌పేపర్ (థంబ్‌నెయిల్) పంపొద్దు, అప్పుడే అది నిలువుగా ఉంటుంది 🌟
+        # 🌟 SHORTS ASPECT RATIO FIX (No Thumbnail for Shorts) 🌟
         if is_short and quality != "audio":
             final_thumb = None
 
@@ -387,7 +369,7 @@ async def start_download_process(client, event, quality, url):
         download_success = False
 
         try:
-            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+            file_path, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
             download_success = True
         except Exception as e:
             logger.error(f"Download Thread Error: {e}")
@@ -411,10 +393,11 @@ async def start_download_process(client, event, quality, url):
                 progress=progress_bar, progress_args=(sent_msg, video_title, header, start_time)
             )
         else:
+            # 🌟 SEND VIDEO WITHOUT DIMENSIONS - Telegram handles orientation perfectly! 🌟
             await client.send_video(
                 chat_id=user_id, video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
-                width=v_width, height=v_height, duration=v_duration,
+                duration=v_duration,
                 thumb=final_thumb, reply_to_message_id=reply_to_id, reply_markup=extract_kb, 
                 progress=progress_bar, progress_args=(sent_msg, video_title, header, start_time), 
                 supports_streaming=True
