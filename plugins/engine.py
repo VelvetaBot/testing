@@ -5,6 +5,7 @@ import asyncio
 import requests
 import yt_dlp
 import youtube_dl 
+import logging
 from pytubefix import YouTube as PyTubeFixDL 
 from pytube import YouTube as PyTubeDL 
 from pyrogram import Client, filters, enums
@@ -18,6 +19,15 @@ from plugins.cookie_manager import get_working_cookie_file
 
 EDIT_TIME = {}
 SCHEDULER_STARTED = False
+
+# 🌟 LOGGING SETUP 🌟
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class MyLogger(object):
+    def debug(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): logger.error(f"YT-DLP Error: {msg}")
 
 def get_header(user_id):
     user = users_db.find_one({"user_id": user_id}) or {}
@@ -47,13 +57,9 @@ def get_yt_metadata(yt_id):
                     break
             return title, thumb_url
         return "YouTube Video", None
-    except Exception:
+    except Exception as e:
+        logger.error(f"Metadata Fetch Error: {e}")
         return "YouTube Video", None
-
-class MyLogger(object):
-    def debug(self, msg): pass
-    def warning(self, msg): pass
-    def error(self, msg): pass 
 
 def get_highest_available_format(url, proxy=None):
     available_res = set()
@@ -68,46 +74,29 @@ def get_highest_available_format(url, proxy=None):
                 h = f.get('height')
                 w = f.get('width')
                 if h and isinstance(h, int) and w and isinstance(w, int): 
-                    if is_short and h > w:
-                        available_res.add(w)
-                    else:
-                        available_res.add(h)
-    except: pass
+                    if is_short and h > w: available_res.add(w)
+                    else: available_res.add(h)
+    except Exception as e: 
+        logger.error(f"Format fetch failed for yt-dlp: {e}")
 
     if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeFixDL(url)
             for s in yt.streams.filter(type="video"):
                 if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
-        except: pass
+        except Exception as e: logger.error(f"Format fetch failed for PyTubeFix: {e}")
 
     if not available_res or max(available_res) <= 360:
         try:
             yt = PyTubeDL(url)
             for s in yt.streams.filter(type="video"):
                 if s.resolution: available_res.add(int(s.resolution.replace('p', '')))
-        except: pass
-
-    if not available_res or max(available_res) <= 360:
-        try:
-            opts = {'quiet': True, 'no_warnings': True, 'skip_download': True, 'nocheckcertificate': True, 'logger': MyLogger()}
-            if proxy and proxy.lower() != "none": opts['proxy'] = proxy
-            with youtube_dl.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                for f in info.get('formats', []):
-                    h = f.get('height')
-                    w = f.get('width')
-                    if h and isinstance(h, int) and w and isinstance(w, int): 
-                        if is_short and h > w:
-                            available_res.add(w)
-                        else:
-                            available_res.add(h)
-        except: pass
+        except Exception as e: logger.error(f"Format fetch failed for PyTube: {e}")
 
     return max(available_res) if available_res else 0
 
 # ==========================================
-# 🌟 PERFECT FALLBACK ROUTING 🌟
+# 🌟 PERFECT FALLBACK ROUTING (With Width & Height Fix) 🌟
 # ==========================================
 def download_media_with_fallback(url, quality, yt_id, proxy=None):
     if not os.path.exists("downloads"):
@@ -123,8 +112,10 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
     else: res_list = [r for r in [2160, 1440, 1080, 720, 480, 360] if r <= req_res]
 
     file_path = None
-    download_success = False
+    v_width = 0
+    v_height = 0
     v_duration = 0
+    download_success = False
 
     for current_res in res_list:
         if download_success: break
@@ -153,27 +144,43 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(url, download=True)
                         fname = ydl.prepare_filename(info)
+                        
+                        dl_w = info.get('width') or 0
+                        dl_h = info.get('height') or 0
+                        
+                        # Shorts Orientation Lock
+                        if is_short and dl_w > dl_h:
+                            dl_w, dl_h = dl_h, dl_w
+                            
+                        # Dimensions fallback if missing
+                        if dl_w == 0 or dl_h == 0:
+                            if is_short:
+                                dl_w = current_res if current_res > 0 else 720
+                                dl_h = int(dl_w * 16 / 9)
+                            else:
+                                dl_h = current_res if current_res > 0 else 720
+                                dl_w = int(dl_h * 16 / 9)
 
                         if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                        return fname, info.get('duration', 0)
-                except Exception:
-                    pass
+                        return fname, dl_w, dl_h, info.get('duration', 0)
+                except Exception as e:
+                    logger.error(f"YTDLP {client_type} Attempt {attempt} Failed: {str(e)}")
             return None
 
         res = try_ytdlp(None)
-        if res: file_path, v_duration = res; download_success = True; break
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
 
         res = try_ytdlp('android')
-        if res: file_path, v_duration = res; download_success = True; break
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
 
         res = try_ytdlp('ios')
-        if res: file_path, v_duration = res; download_success = True; break
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
 
         res = try_ytdlp('tv')
-        if res: file_path, v_duration = res; download_success = True; break
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
         
         res = try_ytdlp('web')
-        if res: file_path, v_duration = res; download_success = True; break
+        if res: file_path, v_width, v_height, v_duration = res; download_success = True; break
 
         try:
             yt = PyTubeFixDL(url)
@@ -181,15 +188,17 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pf.mp3")
-                    file_path, v_duration = fname, yt.length
+                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pf.mp4")
-                    file_path, v_duration = fname, yt.length
+                    dl_w = current_res if is_short else int(current_res * 16 / 9)
+                    dl_h = int(current_res * 16 / 9) if is_short else current_res
+                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
                     download_success = True
-        except: pass
+        except Exception as e: logger.error(f"PyTubeFix Failed: {e}")
         if download_success: break
 
         try:
@@ -198,15 +207,17 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
                 stream = yt.streams.get_audio_only()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_audio_pt.mp3")
-                    file_path, v_duration = fname, yt.length
+                    file_path, v_width, v_height, v_duration = fname, 0, 0, yt.length
                     download_success = True
             else:
                 stream = yt.streams.filter(res=f"{current_res}p", file_extension='mp4').first()
                 if stream:
                     fname = stream.download(output_path="downloads", filename=f"{yt_id}_video_pt.mp4")
-                    file_path, v_duration = fname, yt.length
+                    dl_w = current_res if is_short else int(current_res * 16 / 9)
+                    dl_h = int(current_res * 16 / 9) if is_short else current_res
+                    file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, yt.length
                     download_success = True
-        except: pass
+        except Exception as e: logger.error(f"PyTube Failed: {e}")
         if download_success: break
 
         try:
@@ -220,17 +231,25 @@ def download_media_with_fallback(url, quality, yt_id, proxy=None):
             with youtube_dl.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 fname = ydl.prepare_filename(info)
+                
+                dl_w = info.get('width') or 0
+                dl_h = info.get('height') or 0
+                if is_short and dl_w > dl_h:
+                    dl_w, dl_h = dl_h, dl_w
+                if dl_w == 0 or dl_h == 0:
+                    dl_w = current_res if is_short else int(current_res * 16 / 9)
+                    dl_h = int(current_res * 16 / 9) if is_short else current_res
 
                 if current_res == 0 and not fname.endswith('.mp3'): fname = fname.rsplit('.', 1)[0] + '.mp3'
-                file_path, v_duration = fname, info.get('duration', 0)
+                file_path, v_width, v_height, v_duration = fname, dl_w, dl_h, info.get('duration', 0)
                 download_success = True
-        except: pass
+        except Exception as e: logger.error(f"YoutubeDL Failed: {e}")
         if download_success: break
 
     if not download_success:
         raise Exception("All Qualities and Clients Exhausted")
 
-    return file_path, v_duration
+    return file_path, v_width, v_height, v_duration
 
 def format_bytes(size):
     if not size: return "0.00"
@@ -238,17 +257,13 @@ def format_bytes(size):
 
 async def safe_edit_text(msg, text, reply_markup=None):
     try:
-        if reply_markup:
-            await msg.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
-        else:
-            await msg.edit_text(text, parse_mode=enums.ParseMode.HTML)
-    except MessageNotModified:
-        pass
+        if reply_markup: await msg.edit_text(text, parse_mode=enums.ParseMode.HTML, reply_markup=reply_markup)
+        else: await msg.edit_text(text, parse_mode=enums.ParseMode.HTML)
+    except MessageNotModified: pass
     except FloodWait as e:
         await asyncio.sleep(e.value)
         await safe_edit_text(msg, text, reply_markup)
-    except Exception:
-        pass
+    except Exception as e: logger.error(f"Edit Error: {e}")
 
 async def progress_bar(current, total, msg, title, header, start_time):
     global EDIT_TIME
@@ -277,18 +292,12 @@ async def progress_bar(current, total, msg, title, header, start_time):
                 f"⏳ ETA: {eta_str}"
             )
             
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("❌ Cancel", callback_data="cancel_action"), InlineKeyboardButton("🔙 Back", callback_data="cancel_action")]
-            ])
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ Cancel", callback_data="cancel_action"), InlineKeyboardButton("🔙 Back", callback_data="cancel_action")]])
             await safe_edit_text(msg, text, reply_markup=keyboard)
             EDIT_TIME[msg.id] = time.time()
 
-# ==========================================
-# 🌟 QUALITY BUTTONS GENERATOR 🌟
-# ==========================================
 async def show_quality_buttons(client, message, url, yt_id, user_id, header, edit_msg=None):
     proc_msg = edit_msg if edit_msg else await message.reply_text(f"{header}🔍 <b>Fetching Details...</b>", parse_mode=enums.ParseMode.HTML, reply_to_message_id=message.id)
-    
     title, _ = get_yt_metadata(yt_id)
     proxy = (users_db.find_one({"user_id": user_id}) or {}).get("proxy")
     
@@ -301,7 +310,6 @@ async def show_quality_buttons(client, message, url, yt_id, user_id, header, edi
     btn_720 = InlineKeyboardButton("💻 720p (HD)", callback_data=f"dl|720p|{yt_id}") if max_h >= 720 else InlineKeyboardButton("🔒 720p (HD)", callback_data="locked_quality")
     btn_480 = InlineKeyboardButton("📺 480p (Clear)", callback_data=f"dl|480p|{yt_id}") if max_h >= 480 else InlineKeyboardButton("🔒 480p (Clear)", callback_data="locked_quality")
     btn_360 = InlineKeyboardButton("📱 360p (Best Mobile)", callback_data=f"dl|360p|{yt_id}") if max_h >= 360 else InlineKeyboardButton("🔒 360p (Best Mobile)", callback_data="locked_quality")
-    
     btn_240 = InlineKeyboardButton("📟 240p (Ok Ok)", callback_data=f"dl|240p|{yt_id}") if max_h >= 240 else InlineKeyboardButton("🔒 240p (Ok Ok)", callback_data="locked_quality")
     btn_144 = InlineKeyboardButton("📉 144p (Data Saver)", callback_data=f"dl|144p|{yt_id}") if max_h >= 144 else InlineKeyboardButton("🔒 144p (Data Saver)", callback_data="locked_quality")
 
@@ -335,10 +343,7 @@ async def handle_quality_click(client, callback_query):
             "This is only recommended for saving data 📉.\n\n"
             "🤔 Do you want to proceed?"
         )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("☑️ Yes, Sure", callback_data=f"start_dl|144p|{yt_id}")],
-            [InlineKeyboardButton("🔙 Back", callback_data=f"back_to_q|{yt_id}")]
-        ])
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("☑️ Yes, Sure", callback_data=f"start_dl|144p|{yt_id}")], [InlineKeyboardButton("🔙 Back", callback_data=f"back_to_q|{yt_id}")]])
         await safe_edit_text(callback_query.message, text, reply_markup=keyboard)
     else:
         await start_download_process(client, callback_query, quality, f"https://youtu.be/{yt_id}")
@@ -380,8 +385,7 @@ async def start_download_process(client, event, quality, url):
                 with open(yt_thumb_path, 'wb') as handler:
                     handler.write(img_data)
                 final_thumb = yt_thumb_path
-            except Exception:
-                pass
+            except Exception as e: logger.error(f"Thumbnail Error: {e}")
 
         await safe_edit_text(sent_msg, f"{header}📥 <b>Processing & Downloading...</b>\n🎬 {video_title}")
 
@@ -389,15 +393,14 @@ async def start_download_process(client, event, quality, url):
         download_success = False
 
         try:
-            file_path, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
+            file_path, v_width, v_height, v_duration = await asyncio.to_thread(download_media_with_fallback, url, quality, yt_id, proxy)
             download_success = True
         except Exception as e:
-            pass
+            logger.error(f"Download Thread Error: {e}")
 
         if not download_success:
             from plugins.admin import log_bot_problem
             from plugins.fallback import run_ultimate_fallback
-            
             log_bot_problem("Download Failed (All Layers exhausted).", "engine.py")
             await safe_edit_text(sent_msg, f"{header}⚠️ <b>All Internal Methods Failed!</b>\nTriggering Ultimate Fallback Protocol...")
             await run_ultimate_fallback(client, event.message, url, quality, yt_id, sent_msg)
@@ -408,27 +411,19 @@ async def start_download_process(client, event, quality, url):
 
         if quality == "audio":
             await client.send_audio(
-                chat_id=user_id, 
-                audio=file_path, 
+                chat_id=user_id, audio=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
-                duration=v_duration,
-                thumb=final_thumb, 
-                reply_to_message_id=reply_to_id,
-                progress=progress_bar, 
-                progress_args=(sent_msg, video_title, header, start_time)
+                duration=v_duration, thumb=final_thumb, reply_to_message_id=reply_to_id,
+                progress=progress_bar, progress_args=(sent_msg, video_title, header, start_time)
             )
         else:
-            # 🌟 No width or height passed here. Telegram handles it perfectly based on the file 🌟
+            # 🌟 WIDTH AND HEIGHT ARE NOW PASSED EXACTLY AS RECEIVED! 🌟
             await client.send_video(
-                chat_id=user_id, 
-                video=file_path, 
+                chat_id=user_id, video=file_path, 
                 caption=f"{header}🎬 <b>{video_title}</b>\n\n🙏 Thank you for using @VelvetaYTDownloaderBot", 
-                duration=v_duration,
-                thumb=final_thumb, 
-                reply_to_message_id=reply_to_id,
-                reply_markup=extract_kb, 
-                progress=progress_bar, 
-                progress_args=(sent_msg, video_title, header, start_time), 
+                width=v_width, height=v_height, duration=v_duration,
+                thumb=final_thumb, reply_to_message_id=reply_to_id, reply_markup=extract_kb, 
+                progress=progress_bar, progress_args=(sent_msg, video_title, header, start_time), 
                 supports_streaming=True
             )
         
@@ -440,6 +435,7 @@ async def start_download_process(client, event, quality, url):
     except Exception as e:
         from plugins.admin import log_bot_problem
         log_bot_problem(str(e), "engine.py - Upload Stage")
+        logger.error(f"Upload Stage Error: {e}")
         await safe_edit_text(sent_msg, f"{header}❌ <b>Download Failed!</b>\n\n`{str(e)}`")
 
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "reveal", "setcookies", "setproxy", "schedule", "save", "delete", "wallpaper", "set_preferred_quality", "users", "notify", "problems", "set_FreeBot", "set_freebot", "upgrade", "my_plan", "reset_me", "transfer_premium"]))
