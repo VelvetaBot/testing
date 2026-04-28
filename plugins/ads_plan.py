@@ -11,14 +11,12 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import users_db
 import config
 
-# సెటప్ లాగ్స్
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ADS_PLANS = {"1": 0.5, "3": 2, "5": 4, "7": 9, "10": 14, "25": 28, "30": 32}
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# 🌟 DIRECT INTEGRATION: No more "No SHORTENERS found" errors! 🌟
 SHORTENERS = {
     "gplinks.com": os.environ.get("GPLINKS_TOKEN", "6cfb65c98aac02096414e7df33c7d067bb850c5f"),
     "xui.io": os.environ.get("XUI_TOKEN", "c7f638092aef394f260ebbb9846a4dc2f98f65cc"),
@@ -67,8 +65,11 @@ def fetch_shortlink(api_url):
         logger.error(f"Error fetching shortlink: {e}")
         return None
 
-async def generate_ad_link(user_id, ad_number):
-    bot_username = getattr(config, "BOT_USERNAME", "VelvetaYTDownloaderBot")
+# 🌟 DYNAMIC BOT USERNAME FIX 🌟
+async def generate_ad_link(client, user_id, ad_number):
+    me = await client.get_me()
+    bot_username = me.username
+    
     target_url = f"https://t.me/{bot_username}?start=ad_{user_id}_{ad_number}"
     encoded_url = urllib.parse.quote(target_url)
     
@@ -119,10 +120,11 @@ async def start_ad_plan(client, callback_query):
     days = ADS_PLANS[str(target_ads)]
     
     users_db.update_one({"user_id": user_id}, {"$set": {"ad_progress": {"target": target_ads, "completed": 0, "days": days}}})
-    await send_next_ad(callback_query.message, user_id, 1, target_ads)
+    await send_next_ad(client, callback_query.message, user_id, 1, target_ads)
 
-async def send_next_ad(message, user_id, current_ad_num, target_ads, is_edit=True):
-    short_url = await generate_ad_link(user_id, current_ad_num)
+# 🌟 CLIENT ADDED TO FUNCTION 🌟
+async def send_next_ad(client, message, user_id, current_ad_num, target_ads, is_edit=True):
+    short_url = await generate_ad_link(client, user_id, current_ad_num)
     if not short_url:
         text = f"📺 <b>Ad Task {current_ad_num} of {target_ads}</b>\n\n❌ <b>Servers are busy!</b> Could not generate ad link. Please click 'Change Link'."
         keyboard = InlineKeyboardMarkup([
@@ -151,7 +153,7 @@ async def change_ad_link(client, callback_query):
     except: pass
     user_id = callback_query.from_user.id
     target_ads = users_db.find_one({"user_id": user_id}).get("ad_progress", {}).get("target", 1)
-    await send_next_ad(callback_query.message, user_id, int(callback_query.data.split("_")[2]), target_ads, is_edit=True)
+    await send_next_ad(client, callback_query.message, user_id, int(callback_query.data.split("_")[2]), target_ads, is_edit=True)
 
 @Client.on_callback_query(filters.regex("cancel_ad_plan"))
 async def cancel_ad_plan_handler(client, callback_query):
@@ -223,7 +225,7 @@ async def resend_ad_action(client, callback_query):
     except: pass
     user_id = callback_query.from_user.id
     target = users_db.find_one({"user_id": user_id}).get("ad_progress", {}).get("target", 1)
-    await send_next_ad(callback_query.message, user_id, int(callback_query.data.split("_")[2]), target, is_edit=True)
+    await send_next_ad(client, callback_query.message, user_id, int(callback_query.data.split("_")[2]), target, is_edit=True)
 
 async def ads_expiry_checker(client):
     while True:
